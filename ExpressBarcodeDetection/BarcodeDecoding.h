@@ -3,6 +3,14 @@
 
 #include "RyuCore.h"
 
+
+typedef struct DecodeDemarcateNode
+{
+	int type;
+	int idx_b;
+	int idx_e;
+} DecodeDemarcateNode;
+
 int BarcodeDecoding_init( int max_width, int max_height );
 
 int DecodeBarcode( unsigned char * bina, int width, int height, int sliceH, 

@@ -411,7 +411,7 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
-	IplImage * iplBinaImg = cvCreateImage( cvSize(width, height+32+256+256+3*4), 8, 1 );
+	IplImage * iplBinaImg = cvCreateImage( cvSize(width, height+32+256+128+16+4*4), 8, 1 );
 	IplImage * iplBinaImg3C = cvCreateImage( cvGetSize(iplBinaImg), 8, 3 );
 #endif _DEBUG_DECODE
 #endif _DEBUG_
@@ -421,6 +421,12 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 	int * pGrad2Arr = gpnDcdDecodeArr;
 
 	int * pIntegTop = 0, * pIntegBtm = 0;
+	int sum = 0, type = 0, isActive = 0;
+	int val = 0, maxv = 0, minv = 0;
+
+	DecodeDemarcateNode * demarc_arr = (DecodeDemarcateNode *)malloc(width * sizeof(DecodeDemarcateNode));
+	int demarc_cnt = 0;
+	DecodeDemarcateNode tmpDemarc, buffDemarc;
 	
 	slice_height = 16;
 	slice_cnt = height / (slice_height >> 1) - 1;
@@ -437,12 +443,67 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 		}
 
 		// 求取曲线梯度
-		pGradArr[0] = pGrad2Arr[0] = 0;
+		pGradArr[0] = 0;
 		for(j = 1; j < width; j++) {
 			pGradArr[j] = pColumnArr[j] - pColumnArr[j-1];
-			pGrad2Arr[j] = pColumnArr[j+1] - pColumnArr[j-1];
 		}
 		pGrad2Arr[width-1] = 0;
+
+		// 分析曲线
+		demarc_cnt = 0;
+		tmpDemarc.type = tmpDemarc.idx_b = 0;
+		isActive = 1;
+		maxv = 0;
+		for(j = 1; j < width; j++) {
+			// 获取当前点状态
+			type = (0 == pGradArr[j]) ? 0 : (0 < pGradArr[j] ? 1 : -1);
+			val = abs(pGradArr[j]);
+			// 当前点状态与当前检索区间状态对比
+			if(type == tmpDemarc.type) {
+				// 若为连续0区间，则跳过值验证
+				if(0 == type)
+					continue;
+				// 若区间检索为活跃状态，则验证当前值是否满足失效条件，记录最值
+				else if(isActive) {
+					// 若满足失效条件，则记录最小值
+					if(maxv>>1 >= val) {
+						isActive = 0;
+						minv = val;
+					} else {
+						// 若为连续区间，则记录最大值
+						maxv = val > maxv ? val : maxv;
+					}
+				// 若区间检索为失效状态，则验证当前值是否满足结束条件，记录最值
+				} else {
+					// 满足结束条件，区间检索结束
+					if(val > minv) {
+						tmpDemarc.idx_e = j - 1;
+						demarc_arr[demarc_cnt++] = tmpDemarc;
+
+						// 新区间初始化
+						tmpDemarc.type = type;
+						tmpDemarc.idx_b = j;
+						isActive = 1;
+						maxv = 0;
+					} else {
+						minv = val;
+					}
+				}
+			} else {
+				// 状态结束，区间检索结束
+				tmpDemarc.idx_e = j - 1;
+				demarc_arr[demarc_cnt++] = tmpDemarc;
+
+				// 新区间初始化
+				tmpDemarc.type = type;
+				tmpDemarc.idx_b = j;
+				isActive = 1;
+				maxv = 0;
+			}
+		}
+
+		tmpDemarc.idx_e = width - 1;
+		demarc_arr[demarc_cnt++] = tmpDemarc;
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
@@ -499,9 +560,11 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 		cvCvtColor(iplBinaImg, iplBinaImg3C, CV_GRAY2BGR);
 
 		// 绘制灰度曲线
+		cvLine(iplBinaImg3C, cvPoint(0, offsetY+128-sum), cvPoint(width-1, offsetY+128-sum), CV_RGB(0,0,255));
 		for (int y = 0; y < 128; y++) {
 			unsigned char * pDbgIm = (unsigned char *)iplBinaImg3C->imageData + iplBinaImg3C->widthStep*(y+offsetY);
-			memset(pDbgIm, 0, iplBinaImg3C->widthStep * sizeof(unsigned char));
+			if(y != 128-sum)
+				memset(pDbgIm, 0, iplBinaImg3C->widthStep * sizeof(unsigned char));
 			for (int x = 0; x < width; x++) {
 				if(y >= 128 - abs(pGradArr[x])) {
 					pDbgIm[3*x] = 0;
@@ -511,19 +574,35 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 			}
 		}
 		offsetY += 128;
-		// 绘制灰度曲线2
-		for (int y = 0; y < 128; y++) {
-			unsigned char * pDbgIm = (unsigned char *)iplBinaImg3C->imageData + iplBinaImg3C->widthStep*(y+offsetY);
-			memset(pDbgIm, 0, iplBinaImg3C->widthStep * sizeof(unsigned char));
+
+		// 绘制分割区
+		for (int y = 0; y < 4; y++) {
 			for (int x = 0; x < width; x++) {
-				if(y >= 128 - abs(pGrad2Arr[x])) {
-					pDbgIm[3*x] = 0;
-					pDbgIm[3*x+1] = pGrad2Arr[x] > 0 ? 255 : 0;
-					pDbgIm[3*x+2] = pGrad2Arr[x] < 0 ? 255 : 0;
-				}
+				((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[3*x] = 0x80;
+				((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[3*x+1] = 0x80;
+				((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[3*x+2] = 0x80;
 			}
 		}
-		offsetY += 128;
+		offsetY += 4;
+
+		memset(iplBinaImg3C->imageData + offsetY * iplBinaImg3C->widthStep, 0, 
+			iplBinaImg3C->widthStep * 16 * sizeof(unsigned char));
+		// 绘制曲线划分结果
+		for(int k = 0; k < demarc_cnt; k++) {
+			CvScalar color;
+			if(0 == demarc_arr[k].type)
+				color = CV_RGB(0,0,255);
+			else if(1 == demarc_arr[k].type)
+				color = CV_RGB(0,255,0);
+			else if(-1 == demarc_arr[k].type)
+				color = CV_RGB(255,0,0);
+			if(k % 2) {
+				cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[k].idx_b, offsetY), cvPoint(demarc_arr[k].idx_e, offsetY+7), color, CV_FILLED);
+			} else {
+				cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[k].idx_b, offsetY+8), cvPoint(demarc_arr[k].idx_e, offsetY+15), color, CV_FILLED);
+			}
+		}
+		offsetY += 16;
 
 #endif _DEBUG_DECODE
 #endif _DEBUG_
@@ -541,6 +620,11 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 	}
 
 nExit:
+
+	if(demarc_arr) {
+		free(demarc_arr);
+		demarc_arr = 0;
+	}
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
