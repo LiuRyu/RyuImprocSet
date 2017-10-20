@@ -814,6 +814,7 @@ int algorithm_init(int max_width, int max_height, unsigned char ** results)
 	}
 #endif
 
+#ifdef _RECOG_CHAR_
 	status = Init_RecogChar();
 	if(1 != status) {
 #ifdef	_PRINT_PROMPT
@@ -822,6 +823,7 @@ int algorithm_init(int max_width, int max_height, unsigned char ** results)
 		ret_val = status;
 		goto nExit;
 	}
+#endif _RECOG_CHAR_
 
 #ifdef _MULTI_PKG
 	status = ryuInitFloodFill(ryuSize(400, 400), 1024);
@@ -862,7 +864,9 @@ void algorithm_release()
 	LocateCodeNumber_release();
 #endif
 
+#ifdef _RECOG_CHAR_
 	Release_RecogChar();
+#endif _RECOG_CHAR_
 
 #ifdef _MULTI_PKG
 	ryuReleaseFloodFill();

@@ -12,6 +12,7 @@
 #include "code_qal.h"
 #include "code_locate.h"
 #include "Exwaybill_cutout.h"
+#include "ExpressCutout.h"
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -43,7 +44,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	//////////////////////////////////////////////////////////////////////////
 	// im_proc test
 	// 图像读取路径，可以是文件夹或单个图像文件
-	char srcFilePath[] = "F:\\EN08_OCRNumRecog\\20170907_整合数字截图";
+	char srcFilePath[] = "D:\\Test image\\EN08_OCRNumRecog\\20170907_整合数字截图";
 	char dstPath[MAX_PATH] = "F:/EN08_QRCodeRecog/";
 	std::list<PathElem> ImgList; 
 	std::list<PathElem>::iterator pImgListTemp; 
