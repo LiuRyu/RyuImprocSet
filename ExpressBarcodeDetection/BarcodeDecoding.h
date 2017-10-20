@@ -9,6 +9,8 @@ typedef struct DecodeDemarcateNode
 	int type;
 	int idx_b;
 	int idx_e;
+	int acc;
+	float gravity;
 } DecodeDemarcateNode;
 
 int BarcodeDecoding_init( int max_width, int max_height );
