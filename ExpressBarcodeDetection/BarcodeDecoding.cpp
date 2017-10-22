@@ -534,9 +534,11 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 		if(cnt != 0)
 			sum /= cnt;
 		sum = (36 < (sum>>1)) ? (sum>>1) : 36;
+		sum = 36;
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
+		printf("threshold = %d\n", sum);
 		int offsetY = 0;
 		// »æÖÆÍ¼Ïñ
 		for (int y = 0; y < height; y++) {
