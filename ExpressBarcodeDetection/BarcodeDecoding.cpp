@@ -425,20 +425,20 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 	int val = 0, maxv = 0, minv = 0;
 
 	const int gradThreshold = 30;
-	int * pDemarcRsltL = gpnDcdDecodeArr;
-	int * pDemarcRsltH = gpnDcdDecodeArrProc;
-
-	const float fLumLrningRate = 0.1;
+	const float fLumLrningRateFast = 0.15;
+	const float fLumLrningRateSlow = 0.08;
 	int lumL = 0, lumH = 0;
 	int diff = 0;
 
 	DecodeDemarcateNode * demarc_arr = (DecodeDemarcateNode *)malloc(width * sizeof(DecodeDemarcateNode));
 	int demarc_cnt = 0;
 	DecodeDemarcateNode tmpDemarc, buffDemarc;
+	int tmpAcc = 0;
 
 	DecodeDemarcateNode * demarc_effc = (DecodeDemarcateNode *)malloc(width * sizeof(DecodeDemarcateNode));
 	int demarc_effcnt = 0;
 
+	float * fDemarcCoords = (float *)malloc(width * sizeof(float));
 	float * fDecodeElements = (float *)malloc(width * sizeof(float));
 
 	slice_height = 16;
@@ -449,10 +449,14 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 		// 获取该slice的列灰度平均数组
 		pIntegTop = integr + (slice_top-1) * width;
 		pIntegBtm = integr + slice_bottom * width;
+		lumH = 0;
+		lumL = 255;
 		for(j = 0; j < width; j++) {
 			pColumnArr[j] = pIntegBtm[j] - (0 < slice_top ? pIntegTop[j] : 0);
 			pColumnArr[j] /= slice_height;
 			pColumnArr[j] = 255 - pColumnArr[j];
+			lumL = pColumnArr[j] < lumL ? pColumnArr[j] : lumL;
+			lumH = pColumnArr[j] > lumH ? pColumnArr[j] : lumH;
 		}
 
 		// 求取曲线梯度
@@ -487,6 +491,7 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 					}
 					tmpDemarc.acc += val;
 					tmpDemarc.gravity += val * j;
+
 				// 若区间检索为失效状态，则验证当前值是否满足结束条件，记录最值
 				} else {
 					// 满足结束条件，区间检索结束
@@ -496,6 +501,7 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 							tmpDemarc.gravity = tmpDemarc.gravity / tmpDemarc.acc;
 						else 
 							tmpDemarc.gravity = 0;
+
 						demarc_arr[demarc_cnt++] = tmpDemarc;
 
 						// 最谷值处添加一个0区
@@ -538,13 +544,15 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 		}
 
 		tmpDemarc.idx_e = width - 1;
-		tmpDemarc.gravity = tmpDemarc.gravity / (tmpDemarc.idx_e - tmpDemarc.idx_b + 1);
+		if(tmpDemarc.acc > 0)
+			tmpDemarc.gravity = tmpDemarc.gravity / tmpDemarc.acc;
+		else 
+			tmpDemarc.gravity = 0;
 		demarc_arr[demarc_cnt++] = tmpDemarc;
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
 		int offsetY = 0;
-		int dbgLumL = 0, dbgLumH = 0;
 		// 绘制图像
 		for (int y = 0; y < height; y++) {
 			for (int x = 0; x < width; x++) {
@@ -650,13 +658,20 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 		}
 		offsetY += 8;
 
+		int dbgLumL = lumL, dbgLumH = lumH;
+
 #endif _DEBUG_DECODE
 #endif _DEBUG_
+
+		float fTune = 0;
 
 		// 筛选合并分界区域
 		demarc_effcnt = isActive = 0;
 		for(j = 0; j < demarc_cnt; j++) {
-			if(demarc_arr[j].acc >= gradThreshold) {
+			minv = demarc_arr[j].type > 0 ? pColumnArr[demarc_arr[j].idx_b] : pColumnArr[demarc_arr[j].idx_e];
+			maxv = demarc_arr[j].type < 0 ? pColumnArr[demarc_arr[j].idx_b] : pColumnArr[demarc_arr[j].idx_e];
+			diff = (lumH - lumL) / 5;
+			if(demarc_arr[j].acc >= gradThreshold && maxv >= lumL + diff && minv < lumH - diff) {
 				// 之前有未知区间，则验证插入
 				if(isActive) {
 					// 前后有效域为同种上升/下降类型，中间插入一个待定域
@@ -667,7 +682,7 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 					// 前后有效域为不同上升/下降类型，验证是否为待定域
 					} else {
 						val = (pColumnArr[tmpDemarc.idx_b] + pColumnArr[tmpDemarc.idx_e]) / 2;
-						diff = (lumH - lumL) / 5;
+//						diff = (lumH - lumL) / 5;
 						if(val >= lumL + diff && val <= lumH - diff
 							&& tmpDemarc.acc >= gradThreshold) {
 							tmpDemarc.type = 0;
@@ -675,39 +690,50 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 						}
 					}
 				}
-				// 灰度阈值学习
-				minv = demarc_arr[j].type > 0 ? pColumnArr[demarc_arr[j].idx_b] : pColumnArr[demarc_arr[j].idx_e];
-				maxv = demarc_arr[j].type < 0 ? pColumnArr[demarc_arr[j].idx_b] : pColumnArr[demarc_arr[j].idx_e];
-				if(demarc_effcnt) {
-					lumL = lumL * (1 - fLumLrningRate) + minv * fLumLrningRate;
-					lumH = lumH * (1 - fLumLrningRate) + maxv * fLumLrningRate;
-				} else {
-					lumL = minv;
-					lumH = maxv;
+				// 根据与之对比结果微调重心
+// 				minv = demarc_arr[j].type > 0 ? pColumnArr[demarc_arr[j].idx_b] : pColumnArr[demarc_arr[j].idx_e];
+// 				maxv = demarc_arr[j].type < 0 ? pColumnArr[demarc_arr[j].idx_b] : pColumnArr[demarc_arr[j].idx_e];
+// 				diff = (lumH - lumL) / 5;
+				// 小值未过阈值
+				if(minv > lumL + diff && maxv > lumH - diff) {
+					if(demarc_arr[j].type > 0) {
+						fTune = (demarc_arr[j].gravity - demarc_arr[j].idx_b) / 2;
+						demarc_arr[j].gravity = demarc_arr[j].gravity - fTune;
+					} else {
+						fTune = (demarc_arr[j].idx_e - demarc_arr[j].gravity) / 2;
+						demarc_arr[j].gravity = demarc_arr[j].gravity + fTune;
+					}
+					// 灰度阈值学习
+					lumL = lumL * (1 - fLumLrningRateSlow) + minv * fLumLrningRateSlow;
+					lumH = lumH * (1 - fLumLrningRateFast) + maxv * fLumLrningRateFast;
+				}
+				// 大值未过阈值
+				else if(minv < lumL + diff && maxv < lumH - diff) {
+					if(demarc_arr[j].type > 0) {
+						fTune = (demarc_arr[j].idx_e - demarc_arr[j].gravity) / 2;
+						demarc_arr[j].gravity = demarc_arr[j].gravity + fTune;
+					} else {
+						fTune = (demarc_arr[j].gravity - demarc_arr[j].idx_b) / 2;
+						demarc_arr[j].gravity = demarc_arr[j].gravity - fTune;
+					}
+					// 灰度阈值学习
+					lumL = lumL * (1 - fLumLrningRateFast) + minv * fLumLrningRateFast;
+					lumH = lumH * (1 - fLumLrningRateSlow) + maxv * fLumLrningRateSlow;
+				}
+				// 大小值皆未过阈值，慢速学习
+				else if(minv > lumL + diff && maxv < lumH - diff) {
+					// 灰度阈值学习
+					lumL = lumL * (1 - fLumLrningRateSlow) + minv * fLumLrningRateSlow;
+					lumH = lumH * (1 - fLumLrningRateSlow) + maxv * fLumLrningRateSlow;
+				} 
+				// 大小值皆过阈值，快速学习
+				else {
+					// 灰度阈值学习
+					lumL = lumL * (1 - fLumLrningRateFast) + minv * fLumLrningRateFast;
+					lumH = lumH * (1 - fLumLrningRateFast) + maxv * fLumLrningRateFast;
 				}
 				demarc_effc[demarc_effcnt++] = demarc_arr[j];
 				isActive = 0;
-#ifdef _DEBUG_
-#ifdef _DEBUG_DECODE
-				int dbgOffsetYLum = height + 32 + 2*4;
-				if(demarc_effcnt > 1) {
-					int dbgDiff1 = (lumH - lumL) / 5;
-					int dbgDiff2 = (dbgLumH - dbgLumL) / 5;
-					cvLine(iplBinaImg3C, cvPoint(demarc_effc[demarc_effcnt-2].idx_b, dbgOffsetYLum+255-dbgLumL),
-						cvPoint(demarc_effc[demarc_effcnt-1].idx_b, dbgOffsetYLum+255-lumL), CV_RGB(255, 0, 0));
-					cvLine(iplBinaImg3C, cvPoint(demarc_effc[demarc_effcnt-2].idx_b, dbgOffsetYLum+255-dbgLumH),
-						cvPoint(demarc_effc[demarc_effcnt-1].idx_b, dbgOffsetYLum+255-lumH), CV_RGB(0, 255, 0));
-
-					cvLine(iplBinaImg3C, cvPoint(demarc_effc[demarc_effcnt-2].idx_b, dbgOffsetYLum+255-dbgLumL-dbgDiff2),
-						cvPoint(demarc_effc[demarc_effcnt-1].idx_b, dbgOffsetYLum+255-lumL-dbgDiff1), CV_RGB(255, 96, 96));
-					cvLine(iplBinaImg3C, cvPoint(demarc_effc[demarc_effcnt-2].idx_b, dbgOffsetYLum+255-dbgLumH+dbgDiff2),
-						cvPoint(demarc_effc[demarc_effcnt-1].idx_b, dbgOffsetYLum+255-lumH+dbgDiff1), CV_RGB(96, 255, 96));
-				}
-				dbgLumL = lumL;
-				dbgLumH = lumH;
-#endif _DEBUG_
-#endif _DEBUG_DECODE
-
 			} else if(demarc_effcnt) {
 				// 之前有未知区间，则合并
 				if(isActive) {
@@ -723,6 +749,26 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 					tmpDemarc.count = 1;
 				}
 			}
+#ifdef _DEBUG_
+#ifdef _DEBUG_DECODE
+			int dbgOffsetYLum = height + 32 + 2*4 + 255;
+			if(demarc_effcnt > 0) {
+				int dbgDiff1 = (lumH - lumL) / 5;
+				int dbgDiff0 = (dbgLumH - dbgLumL) / 5;
+				cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumL),
+					cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumL), CV_RGB(255, 0, 0));
+				cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumH),
+					cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumH), CV_RGB(0, 255, 0));
+
+				cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumL-dbgDiff0),
+					cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumL-dbgDiff1), CV_RGB(255, 96, 96));
+				cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumH+dbgDiff0),
+					cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumH+dbgDiff1), CV_RGB(96, 255, 96));
+			}
+			dbgLumL = lumL;
+			dbgLumH = lumH;
+#endif _DEBUG_
+#endif _DEBUG_DECODE
 		}
 
 		float fMin = (float)width, fVal = 0.0;
@@ -734,40 +780,88 @@ int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, in
 			}
 		}
 
+		// 未知区域划分，宽度写入
 		int decodeCnt = 0;
 		float fCnt = 0.0, fTmp = 0.0;
+		fDemarcCoords[0] = demarc_effc[0].gravity;
 		for(j = 1; j < demarc_effcnt; j++) {
+			// 未知区域，跳至下一区间
 			if(0 == demarc_effc[j].type)
 				continue;
+			// 当前和上一个区域皆为确定边界，计算宽度
 			else if(0 != demarc_effc[j-1].type) {
 				fVal = demarc_effc[j].gravity - demarc_effc[j-1].gravity;
-				fDecodeElements[decodeCnt++] = (demarc_effc[j].type > 0) ? fVal : (0 - fVal);
-			} else {
+				fDecodeElements[decodeCnt] = (demarc_effc[j].type > 0) ? fVal : (0 - fVal);
+				gpnDcdDecodeArr[decodeCnt] = fDecodeElements[decodeCnt] * 100;
+				fDemarcCoords[decodeCnt+1] = demarc_effc[j].gravity;
+				decodeCnt++;
+			} 
+			// 上一个为未知区域
+			else {
+				// 计算宽度容许度
 				fVal = demarc_effc[j].gravity - demarc_effc[j-2].gravity;
 				fCnt = fVal / fMin;
+				// 若未知区域前后确定边界为同一类型，则插入偶数个宽度
 				if(demarc_effc[j].type == demarc_effc[j-2].type) {
-					for(cnt = 2; cnt < 10; cnt += 2) {
+					for(cnt = 2; cnt < 9; cnt += 2) {
+						if(fCnt + 0.5 < cnt + 2)
+							break;
+					}
+					if(0 == cnt)
+						fVal = fVal / cnt;
+					for(k = 0; k < cnt; k++) {
+						fTmp = (0 > demarc_effc[j].type) ? fVal : (0-fVal);
+						fDecodeElements[decodeCnt] = (0 == k % 2) ? fTmp : (0-fTmp);
+						gpnDcdDecodeArr[decodeCnt] = fDecodeElements[decodeCnt] * 100;
+						fDemarcCoords[decodeCnt+1] = fDemarcCoords[decodeCnt] + fVal;
+						decodeCnt++;
+					}
+				}
+				// 若未知区域前后确定边界为不同类型，则插入奇数个宽度
+				else {
+					for(cnt = 1; cnt < 8; cnt += 2) {
 						if(fCnt + 0.5 < cnt + 2)
 							break;
 					}
 					fVal = fVal / cnt;
 					for(k = 0; k < cnt; k++) {
-						fTmp = (0 > demarc_effc[j].type) ? fVal : (0-fVal);
+						fTmp = (0 < demarc_effc[j].type) ? fVal : (0-fVal);
 						fDecodeElements[decodeCnt] = (0 == k % 2) ? fTmp : (0-fTmp);
+						gpnDcdDecodeArr[decodeCnt] = fDecodeElements[decodeCnt] * 100;
+						fDemarcCoords[decodeCnt+1] = fDemarcCoords[decodeCnt] + fVal;
 						decodeCnt++;
 					}
 				}
 			}
 		}
 
+		// 试着识别
+		status = 0;
+		nColCount = decodeCnt;
+		memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
+		memcpy( gpnDcdDecodeArrProc, gpnDcdDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+		status = RecgCode128(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
+			&nDirection, &nLeftIdx, &nRightIdx);
+
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
+		printf("********fMin = %3.2f\n", fMin);
+		int dbgOffsetYDem = height - 4;
 		for(int jjj = 0; jjj < decodeCnt; jjj++) {
+			if(0 != jjj && 0 == jjj % 6)
+				printf("\n");
 			if(0 == jjj % 2)
-				printf("[%2d] = %3.2f\n", jjj, fDecodeElements[jjj]);
+				printf("[%2d]=%4.2f  ", jjj, fDecodeElements[jjj]);
 			else
-				printf("[%2d] = %15.2f\n", jjj, fDecodeElements[jjj]);
+				printf("[%2d]=%4.2f  ", jjj, fDecodeElements[jjj]);
+
+			cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoords[jjj]+0.5), dbgOffsetYDem),
+				cvPoint(int(fDemarcCoords[jjj]+0.5), dbgOffsetYDem+12), CV_RGB(255, 0, 0));
 		}
+		cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoords[decodeCnt]+0.5), dbgOffsetYDem),
+			cvPoint(int(fDemarcCoords[decodeCnt]+0.5), dbgOffsetYDem+12), CV_RGB(255, 0, 0));
+
+		printf("\n********status=%d, strResult=%s\n", status, strResult);
 		cvNamedWindow("Decode");
 		cvShowImage("Decode", iplBinaImg3C);
 		cvWaitKey();
