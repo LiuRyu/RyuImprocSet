@@ -9,7 +9,10 @@ typedef struct DecodeDemarcateNode
 	int type;
 	int idx_b;
 	int idx_e;
+	int idxex_b;
+	int idxex_e;
 	int acc;
+	int max_v;
 	int count;
 	float gravity;
 } DecodeDemarcateNode;

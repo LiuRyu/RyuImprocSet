@@ -19,13 +19,10 @@
 #ifdef _OCR
 // TODO: 插入字符识别头文件引用
 #include "LocateCodeNumber.h"
-#define OCR_INTERCEPT_EXTEND	(36) 
 #endif
 
 #ifdef  _DEBUG_
-#ifdef  _DEBUG_MAIN
 #include "OpenCv_debugTools.h"
-#endif
 #endif
 
 #ifdef	_PRINT_TIME
@@ -39,6 +36,7 @@
 
 #define BARCODE_RESULT_MAX_COUNT	(128)
 #define LOCATE_SCAN_WINDOW_SIZE		(32)
+#define OCR_INTERCEPT_EXTEND		(36) 
 
 using namespace std;
 
@@ -94,9 +92,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 
 	// OCR字符识别
 	int IsNumberRecg = 0;
-#ifdef _OCR
 	RyuPoint ptIncptOCR, ptOncptOCR, ptCornerOCR[4];
-#endif
 
 	// 包裹检测
 	RyuPoint pkgCentre = ryuPoint(-1, -1);
@@ -261,7 +257,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 // 		status = RotateImage(in_data, width, height, pSegmentBarcode[i].corner_ext, pSegmentBarcode[i].angle, 
 // 			pSegmentBarcode[i].flag+1, (short *) &rtt_width, (short *) &rtt_height);
 		status = RotateImage(in_data, width, height, pSegmentBarcode[i].corner_ext, pSegmentBarcode[i].angle, 
-			2, (short *) &rtt_width, (short *) &rtt_height);
+			1, (short *) &rtt_width, (short *) &rtt_height);
 #ifdef _WRITE_LOG
 #ifdef _LOG_TRACE
 		Write_Log(LOG_TYPE_INFO, "TRACE- %dth RotateImage proc done. ret=%d", i, status);
@@ -516,6 +512,79 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 
 		TimeCost = 0;
 		*/
+
+#ifdef _CUT_CHAR_
+		//////////////////////////////////////////////////////////////////////////
+		// 字符识别图像截取
+		while(1 == nDecodeFlag) {
+			// Step1
+			int char_angle = (codeDirect > 0) ? pSegmentBarcode[i].angle : pSegmentBarcode[i].angle+180;
+
+			if(char_angle < 180) {
+				ptIncptOCR.x = pSegmentBarcode[i].max_intcpt;
+				ptIncptOCR.y = pSegmentBarcode[i].max_intcpt + OCR_INTERCEPT_EXTEND;
+				ptOncptOCR.x = pSegmentBarcode[i].min_ontcpt;
+				ptOncptOCR.y = pSegmentBarcode[i].max_ontcpt;
+				InterceptCvt2Corners(ptIncptOCR, ptOncptOCR, char_angle, ptCornerOCR);
+				status = RotateImage(in_data, width, height, ptCornerOCR, char_angle, 
+					1, (short *) &rtt_width, (short *) &rtt_height);
+				if( status <= 0 ) {
+#ifdef	_PRINT_PROMPT
+					printf( "Warning! Unexpected return of RotateImageOCR, slice%d ret_val=%d. --algorithm_run\n", i, status );
+#endif
+					break;
+				}
+				ucBarcodeImage = GetRotateImage();
+				if( !ucBarcodeImage ) {
+#ifdef	_PRINT_PROMPT
+					printf( "Error! Unexpected return of GetRotateImageOCR, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
+#endif
+					break;
+				}
+			} else {
+				ptIncptOCR.x = pSegmentBarcode[i].min_intcpt - OCR_INTERCEPT_EXTEND;
+				ptIncptOCR.y = pSegmentBarcode[i].min_intcpt;
+				ptOncptOCR.x = pSegmentBarcode[i].min_ontcpt;
+				ptOncptOCR.y = pSegmentBarcode[i].max_ontcpt;
+				InterceptCvt2Corners(ptIncptOCR, ptOncptOCR, char_angle-180, ptCornerOCR);
+				status = RotateImage(in_data, width, height, ptCornerOCR, char_angle-180, 
+					1, (short *) &rtt_width, (short *) &rtt_height);
+				if( status <= 0 ) {
+#ifdef	_PRINT_PROMPT
+					printf( "Warning! Unexpected return of RotateImageOCR, slice%d ret_val=%d. --algorithm_run\n", i, status );
+#endif
+					break;
+				}
+				ucBarcodeImage = GetRotateImage();
+				if( !ucBarcodeImage ) {
+#ifdef	_PRINT_PROMPT
+					printf( "Error! Unexpected return of GetRotateImageOCR, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
+#endif
+					break;
+				}
+				int rtt_size = rtt_width * rtt_height;
+				for(j = 0; j < (rtt_size>>1); j++) {
+					unsigned char ucTmp = ucBarcodeImage[j];
+					ucBarcodeImage[j] = ucBarcodeImage[rtt_size-j-1];
+					ucBarcodeImage[rtt_size-j-1] = ucTmp;
+				}
+			}
+
+			printf("codeDirect=%d, pSegmentBarcode[i].angle=%d, char_angle=%d\n", codeDirect, pSegmentBarcode[i].angle, char_angle);
+			IplImage * dbgCutCharIm = cvCreateImage(cvSize(rtt_width, rtt_height), 8, 1);
+			uc2IplImageGray(ucBarcodeImage, dbgCutCharIm);
+			cvNamedWindow("dbgCutCharIm");
+			cvShowImage("dbgCutCharIm", dbgCutCharIm);
+			cvWaitKey();
+			cvReleaseImage(&dbgCutCharIm);
+
+			break;
+		}
+
+		// OCR字符识别模块 END
+		//////////////////////////////////////////////////////////////////////////
+#endif _CUT_CHAR_
+
 		//////////////////////////////////////////////////////////////////////////
 		// OCR字符识别模块
 		// 若无法识别，则进入OCR字符识别
