@@ -5,6 +5,7 @@
 
 #include "RyuCore.h"
 
+#include "BarcodeDecoding.h"
 #include "Decoder_code128.h"
 
 #ifdef	_DEBUG_
@@ -19,7 +20,8 @@
 // 20170330 v2.3.2.1b
 //#define CODE128_MAX_MODULE_DEVIATION	(4<<FLOAT2FIXED_SHIFT_DIGIT)
 #define CODE128_MAX_MODULE_DEVIATION	(3<<FLOAT2FIXED_SHIFT_DIGIT)
-#define CODE128_MAXMIN_MODULE_RATIO		(1.35)
+//#define CODE128_MAXMIN_MODULE_RATIO		(1.35)
+#define CODE128_MAXMIN_MODULE_RATIO		(1.50)
 // END
 
 const int gnDecoderModuleCode128[107] = {
@@ -65,7 +67,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 					, code_idxR=0x%x\n", decode_arr, code_result, code_digit, code_module, \
 					code_direct, code_idxL, code_idxR );
 #endif
-			nRet = -1;
+			nRet = RYU_DECODERR_NULLPTR;
 			goto nExit;
 	}
 
@@ -80,7 +82,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 		printf("Cannot find code128, too small arr_count: %d\n", arr_count);
 #endif
 #endif
-		nRet = 0;
+		nRet = RYU_DECODERR_SHORTLEN;
 		goto nExit;
 	}
 
@@ -92,7 +94,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 				return=%d\n", status );
 #endif
 #endif
-		nRet = 0;
+		nRet = RYU_DECODERR_NOST;
 		goto nExit;
 	}
 
@@ -105,7 +107,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 		printf("Cannot find code128, bad nColCount: %d\n", nArrCount);
 #endif
 #endif
-		nRet = 0;
+		nRet = RYU_DECODERR_SHORTLEN_ST;
 		goto nExit;
 	}
 
@@ -117,7 +119,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 		printf("Cannot find code128, bad nSeqCount: %d\n", status);
 #endif
 #endif
-		nRet = 0;
+		nRet = RYU_DECODERR_MATCHFAILED;
 		goto nExit;
 	}
 
@@ -131,7 +133,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 		printf("Cannot find code128, check digit verification failed, return=%d\n", status);
 #endif
 #endif
-		nRet = 0;
+		nRet = RYU_DECODERR_VERIFYFAILED;
 		goto nExit;
 	}
 
@@ -143,7 +145,7 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 #endif
 #endif
 		code_result[0] = 0;
-		nRet = 0;
+		nRet = RYU_DECODERR_TRANSCFAILED;
 		goto nExit;
 	}
 
@@ -629,6 +631,7 @@ int CheckDigitVerify_code128(int * seq_arr, int * faith_arr, int seq_cnt)
 	//////////////////////////////////////////////////////////////////////////
 	// 20170330 v2.3.2.1b
 	// 验证置信度
+	/*
 	int nMin = 0x7fff, nMax = 0;
 	for( i = 1; i <= seq_cnt - 1; i++ ) {
 		if(0 >= (faith_arr[i] & 0xffff)) {
@@ -644,8 +647,9 @@ int CheckDigitVerify_code128(int * seq_arr, int * faith_arr, int seq_cnt)
 		nRet = 0;
 		goto nExit;
 	}
-	// 验证模块宽度
-	// END
+	*/
+	// 验证模块宽度END
+	//////////////////////////////////////////////////////////////////////////
 
 	sum = seq_arr[0];
 	for( i = 1; i < seq_cnt - 1; i++ ) {

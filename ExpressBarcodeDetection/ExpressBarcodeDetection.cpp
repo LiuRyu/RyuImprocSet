@@ -46,7 +46,6 @@ unsigned char * gpucBarcodeResults = 0;
 
 int gnExprBrcdDtctInitFlag = 0;
 
-int ValidityCheck_code128(char * code_result, int startbit, int checkbit);
 
 /************************************************************************/
 /* 运行识别																*/
@@ -81,7 +80,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 	unsigned char * ucDecodeImage = 0;
 	
 	// 读码
-	int sliceH = 0, nDecodeFlag = 0, sliceHs[8] = {0}, sliceCnt = 0;
+	int sliceH = 0, nDecodeFlag = 0, sliceHs[32] = {0}, sliceCnt = 0;
 	int codeDigit = 0, codeType = 0, codeDirect = 0, codeModule = 0;
 	char code_result[CODE_RESULT_ARR_LENGTH];
 	int codeOffsetL = 0, codeOffsetR = 0;
@@ -313,10 +312,22 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 		ucDecodeImage = getBarcodeImgProcOutput();
 
 #ifdef _VERSION_2_4_1
-		BarcodeDecoding_Integrogram(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, code_result, 
-			&codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR);
+		sliceCnt = 0;
+		sliceH = rtt_height;
+		while(sliceH >= 24) {
+			sliceHs[sliceCnt++] = sliceH;
+			sliceH = rtt_height / (sliceCnt + 1);
+		}
+		sliceHs[sliceCnt++] = 16;
+		sliceHs[sliceCnt++] = 12;
+		sliceHs[sliceCnt++] = 8;
+		sliceHs[sliceCnt++] = 4;
+		for(j = 0; j < sliceCnt; j++) {
+			BarcodeDecoding_run(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, sliceHs[j],
+				code_result, &codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR);
+		}
 		continue;
-#endif _VERSION_2_4_1
+#else _VERSION_2_4_1
 
 		// 计算输入识别高度
 		sliceCnt = 0;
@@ -371,7 +382,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 				break;
 			}
 		}
-
+#endif
 		/*
 		// 条码识别，添加修改部分
 		nDecodeFlag = 0;
