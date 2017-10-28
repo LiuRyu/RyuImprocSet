@@ -38,6 +38,9 @@
 #define LOCATE_SCAN_WINDOW_SIZE		(32)
 #define OCR_INTERCEPT_EXTEND		(36) 
 
+#define DECODE_AVGMIN_MODULEW_THRESHOLD	(1.5)
+#define DECODE_IM_WIDTH_THRESHOLD		(400)
+
 using namespace std;
 
 int gnImageMaxWidth = 0, gnImageMaxHeight = 0, gnImageMaxSize = 0;
@@ -56,7 +59,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 	// 错误号
 	const int error_ret = -1010100;
 
-	int i = 0, j = 0, status = 0;
+	int i = 0, j = 0, k = 0, status = 0;
 	int ret_val = -1000000;
 
 	// 结果
@@ -84,6 +87,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 	int codeDigit = 0, codeType = 0, codeDirect = 0, codeModule = 0;
 	char code_result[CODE_RESULT_ARR_LENGTH];
 	int codeOffsetL = 0, codeOffsetR = 0;
+	float minModuleW = 0.0, accModuleW = 0.0;
 
 	// 临时变量
 	RyuPoint ptCenter;
@@ -252,277 +256,106 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 
 	// 依次对分割出来的条形码区域图像进行缩放、旋转和识别
 	for(i = 0; i < nSegmentCnt; i++) {
-		// 根据标志flag对条码区域图像进行缩放、旋转矫正
-// 		status = RotateImage(in_data, width, height, pSegmentBarcode[i].corner_ext, pSegmentBarcode[i].angle, 
-// 			pSegmentBarcode[i].flag+1, (short *) &rtt_width, (short *) &rtt_height);
-		status = RotateImage(in_data, width, height, pSegmentBarcode[i].corner_ext, pSegmentBarcode[i].angle, 
-			1, (short *) &rtt_width, (short *) &rtt_height);
+		// 对于每个分割域，最多尝试识别两次，第一次为原图大小，第二次放大
+		for(j = 0; j < 2; j++) {
+			// 根据标志flag对条码区域图像进行缩放、旋转矫正
+			status = RotateImage(in_data, width, height, pSegmentBarcode[i].corner_ext, pSegmentBarcode[i].angle, 
+				j+1, (short *) &rtt_width, (short *) &rtt_height);
+
 #ifdef _WRITE_LOG
 #ifdef _LOG_TRACE
-		Write_Log(LOG_TYPE_INFO, "TRACE- %dth RotateImage proc done. ret=%d", i, status);
+			Write_Log(LOG_TYPE_INFO, "TRACE- %dth RotateImage proc done. ret=%d", i, status);
 #endif
 #endif
 		// 这里需要加入对于宽度的限制
-		if( status <= 0 ) {
+			if( status <= 0 ) {
 #ifdef	_PRINT_PROMPT
-			printf( "Warning! Unexpected return of RotateImage, slice%d ret_val=%d. --algorithm_run\n", i, status );
+				printf( "Warning! Unexpected return of RotateImage, slice%d ret_val=%d. --algorithm_run\n", i, status );
 #endif
 #ifdef _WRITE_LOG
-			Write_Log(LOG_TYPE_ERROR, "错误号: %d. RotateImage seq=%d", status, i);
+				Write_Log(LOG_TYPE_ERROR, "错误号: %d. RotateImage seq=%d", status, i);
 #endif
-			continue;
-		} else if(rtt_width <= 5 || rtt_height <= 5) {
-			continue;
-		}
-
-		ucBarcodeImage = GetRotateImage();
-		if( !ucBarcodeImage ) {
-#ifdef	_PRINT_PROMPT
-			printf( "Warning! Unexpected return of GetRotateImage, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
-#endif
-#ifdef _WRITE_LOG
-			Write_Log(LOG_TYPE_ERROR, "错误号: -11809001. RotateImage seq=%d, ret=%d, ucBarcodeImage=0x%x", 
-				status, i, ucBarcodeImage);
-#endif
-			continue;
-		}
-
-		// 条码区域矫正图像预处理(调整对比度、锐化、二值化)
-#ifndef _VERSION_2_4_1
-		status = BarcodeImgProcess(ucBarcodeImage, rtt_width, rtt_height);
-#else
-		status = BarcodeImgProcessIntegrogram(ucBarcodeImage, rtt_width, rtt_height);
-#endif _VERSION_2_4_1
-
-#ifdef _WRITE_LOG
-#ifdef _LOG_TRACE
-		Write_Log(LOG_TYPE_INFO, "TRACE- %dth BarcodeImgProcess proc done. ret=%d", i, status);
-#endif
-#endif
-		if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-			printf( "Warning! Unexpected return of BarcodeImageProcessing, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-#ifdef _WRITE_LOG
-			Write_Log(LOG_TYPE_ERROR, "错误号: %d. BarcodeImgProcess seq=%d", status, i);
-#endif
-			continue;
-		}
-
-		ucDecodeImage = getBarcodeImgProcOutput();
-
-#ifdef _VERSION_2_4_1
-		sliceCnt = 0;
-		sliceH = rtt_height;
-		while(sliceH >= 24) {
-			sliceHs[sliceCnt++] = sliceH;
-			sliceH = rtt_height / (sliceCnt + 1);
-		}
-		sliceHs[sliceCnt++] = 16;
-		sliceHs[sliceCnt++] = 12;
-		sliceHs[sliceCnt++] = 8;
-		sliceHs[sliceCnt++] = 4;
-		for(j = 0; j < sliceCnt; j++) {
-			BarcodeDecoding_run(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, sliceHs[j],
-				code_result, &codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR);
-		}
-		continue;
-#else _VERSION_2_4_1
-
-		// 计算输入识别高度
-		sliceCnt = 0;
-		sliceHs[0] = 16;
-		if(16 >= rtt_height) {
-			sliceHs[1] = 12;
-			sliceHs[2] = 8;
-			sliceHs[3] = 4;
-			sliceCnt = 4;
-		} else if(24 >= rtt_height) {
-			sliceHs[1] = rtt_height;
-			sliceHs[2] = 12;
-			sliceHs[3] = 8;
-			sliceHs[4] = 4;
-			sliceCnt = 5;
-		} else if(32 >= rtt_height) {
-			sliceHs[1] = rtt_height;
-			sliceHs[2] = 24;
-			sliceHs[3] = 12;
-			sliceHs[4] = 8;
-			sliceCnt = 5;
-		} else if(65 >= rtt_height) {
-			sliceHs[1] = rtt_height;
-			sliceHs[2] = 32;
-			sliceHs[3] = 24;
-			sliceHs[4] = 12;
-			sliceHs[5] = 8;
-			sliceCnt = 6;
-		} else {
-			sliceHs[1] = rtt_height;
-			sliceHs[2] = rtt_height / 2;
-			sliceHs[3] = 32;
-			sliceHs[4] = 24;
-			sliceHs[5] = 12;
-			sliceCnt = 6;
-		}
-		// FOR TEST
-// 		sliceHs[0] = rtt_height;
-// 		sliceCnt = 1;
-		// END TEST
-		nDecodeFlag = 0;
-		IsNumberRecg = 0;//数字识别标识符清零 2016-5-12 wcc
-		for(j = 0; j < sliceCnt; j++) {
-			memset(code_result, 0, sizeof(char) * CODE_RESULT_ARR_LENGTH);
-			codeType = codeDigit = codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
-			nDecodeFlag = DecodeBarcode(ucDecodeImage, rtt_width, rtt_height, sliceHs[j], code_result, 
-				&codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR);
-			if( 1 == nDecodeFlag ) {
-#ifdef _DEBUG_
-				printf("Code recog in %d(%d)loop, sliceH=%d\n", j+1, sliceCnt, sliceHs[j]);
-#endif _DEBUG_
-				break;
+				continue;
+			} else if(rtt_width <= 5 || rtt_height <= 5) {
+				continue;
 			}
-		}
+
+			ucBarcodeImage = GetRotateImage();
+			if( !ucBarcodeImage ) {
+#ifdef	_PRINT_PROMPT
+				printf( "Warning! Unexpected return of GetRotateImage, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
 #endif
-		/*
-		// 条码识别，添加修改部分
-		nDecodeFlag = 0;
-		sliceH = 16;
-		IsNumberRecg = 0;//数字识别标识符清零 2016-5-12 wcc
-		while(1) {
-			memset(code_result, 0, sizeof(char) * CODE_RESULT_ARR_LENGTH);
-			codeType = codeDigit = codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
-			nDecodeFlag = DecodeBarcode(ucDecodeImage, rtt_width, rtt_height, sliceH, code_result, 
-				&codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR);
-			if( 1 == nDecodeFlag )
-				break;
-			sliceH -= 4;
-			if( 4 >= sliceH )
-				break;
-		}*/
+#ifdef _WRITE_LOG
+				Write_Log(LOG_TYPE_ERROR, "错误号: -11809001. RotateImage seq=%d, ret=%d, ucBarcodeImage=0x%x", 
+					status, i, ucBarcodeImage);
+#endif
+				continue;
+			}
+
+			// 条码区域矫正图像预处理(调整对比度、锐化、二值化)
+			status = BarcodeImgProcessIntegrogram(ucBarcodeImage, rtt_width, rtt_height);
 
 #ifdef _WRITE_LOG
 #ifdef _LOG_TRACE
-		Write_Log(LOG_TYPE_INFO, "TRACE- %dth DecodeBarcode proc done. nDecodeFlag=%d", i, nDecodeFlag);
-#endif
-#endif
-
-		//////////////////////////////////////////////////////////////////////////
-
-#if 0
-		// 拼图重识别
-		if( 1 != nDecodeFlag ) {
-			status = BarcodeImageproc_recombination(ucDecodeImage, rtt_width, rtt_height);
-#ifdef _WRITE_LOG
-#ifdef _LOG_TRACE
-			Write_Log(LOG_TYPE_INFO, "TRACE- %dth BarcodeRecombination proc done. status=%d", i, nDecodeFlag);
+			Write_Log(LOG_TYPE_INFO, "TRACE- %dth BarcodeImgProcess proc done. ret=%d", i, status);
 #endif
 #endif
 			if( status <= 0 ) {
 #ifdef	_PRINT_PROMPT
-				printf( "Warning! Unexpected return of BarcodeImageproc_recombination, slice%d ret_val=%d. --algorithm_run\n", i, status );
+				printf( "Warning! Unexpected return of BarcodeImageProcessing, slice%d ret_val=%d. --algorithm_run\n", i, status );
+#endif
+#ifdef _WRITE_LOG
+				Write_Log(LOG_TYPE_ERROR, "错误号: %d. BarcodeImgProcess seq=%d", status, i);
 #endif
 				continue;
 			}
-			sliceH = 16;
-			while(1) {
+
+			ucDecodeImage = getBarcodeImgProcOutput();
+
+			sliceCnt = 0;
+			sliceH = rtt_height;
+			while(sliceH >= 24) {
+				sliceHs[sliceCnt++] = sliceH;
+				sliceH = rtt_height / (sliceCnt + 1);
+			}
+			sliceHs[sliceCnt++] = 16;
+			sliceHs[sliceCnt++] = 12;
+			sliceHs[sliceCnt++] = 8;
+			sliceHs[sliceCnt++] = 4;
+			accModuleW = 0.0;
+			for(k = 0; k < sliceCnt; k++) {
 				memset(code_result, 0, sizeof(char) * CODE_RESULT_ARR_LENGTH);
 				codeType = codeDigit = codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
-				nDecodeFlag = DecodeBarcode(ucDecodeImage, rtt_width, rtt_height, sliceH, code_result, 
-					&codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR);
-				if( 1 == nDecodeFlag )
-					break;
-				sliceH -= 4;
-				if( 4 >= sliceH )
+				minModuleW = 0.0;
+				nDecodeFlag = BarcodeDecoding_run(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, sliceHs[k],
+					code_result, &codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR, &minModuleW);
+				accModuleW = accModuleW + minModuleW;
+				if(1 == nDecodeFlag)
 					break;
 			}
 
+			accModuleW = accModuleW / sliceCnt;
+			printf("accModuleW = %3.2f\n", accModuleW);
+
+			if(1 == nDecodeFlag) {
+				codeOffsetL /= (j+1);
+				codeOffsetR /= (j+1);
+				break;
+			}
+			else if(1 != nDecodeFlag 
+				&& accModuleW < DECODE_AVGMIN_MODULEW_THRESHOLD 
+				&& rtt_width < DECODE_IM_WIDTH_THRESHOLD) {
+				continue;
+			} else {
+				break;
+			}
+		}
+
 #ifdef _WRITE_LOG
 #ifdef _LOG_TRACE
-			Write_Log(LOG_TYPE_INFO, "TRACE- %dth BarcodeRecombination DecodeBarcode proc done. nDecodeFlag=%d", i, nDecodeFlag);
+			Write_Log(LOG_TYPE_INFO, "TRACE- %dth DecodeBarcode proc done. nDecodeFlag=%d", i, nDecodeFlag);
 #endif
 #endif
-		}
-#endif
-		//////////////////////////////////////////////////////////////////////////
-		/*
-		RyuPoint ptIncptOCR, ptOncptOCR, ptCornerOCR[4];
-		ptIncptOCR.x = pSegmentBarcode[i].max_intcpt;
-		ptIncptOCR.y = pSegmentBarcode[i].max_intcpt + 40;
-		ptOncptOCR.x = pSegmentBarcode[i].min_ontcpt;
-		ptOncptOCR.y = pSegmentBarcode[i].max_ontcpt;
-		InterceptCvt2Corners(ptIncptOCR, ptOncptOCR, pSegmentBarcode[i].angle, ptCornerOCR);
-		status = RotateImage(in_data, width, height, ptCornerOCR, pSegmentBarcode[i].angle, 
-			1, (short *) &rtt_width, (short *) &rtt_height);
-		if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-			printf( "Warning! Unexpected return of RotateImageOCR2, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-			continue;
-		}
-		ucBarcodeImage = GetRotateImage();
-		if( !ucBarcodeImage ) {
-#ifdef	_PRINT_PROMPT
-			printf( "Error! Unexpected return of GetRotateImageOCR2, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
-#endif
-			continue;
-		}
-
-		IplImage * iplBarcodeImage = cvCreateImage(cvSize(rtt_width, rtt_height), 8, 1);
-		uc2IplImageGray(ucBarcodeImage, iplBarcodeImage);
-		cvNamedWindow("iplBarcodeImage");
-		cvShowImage("iplBarcodeImage", iplBarcodeImage);
-		cvWaitKey();
-		cvReleaseImage(&iplBarcodeImage);
-
-		long TimeCost = 0;
-		LARGE_INTEGER m_frequency = {0}, m_time1 = {0}, m_time2 = {0};
-		int support = QueryPerformanceFrequency(&m_frequency);
-		QueryPerformanceCounter(&m_time2);
-
-		Algorithm_RecogChar(ucBarcodeImage, rtt_width, rtt_height,(72<<16)|(104<<8)|12, code_result);
-
-		QueryPerformanceCounter((LARGE_INTEGER*) &m_time1);
-		TimeCost = 1000.0*1000.0*(m_time1.QuadPart-m_time2.QuadPart)/m_frequency.QuadPart;
-		printf("\n-Algorithm_RecogChar 耗时: %ldus\n", TimeCost);
-
-		ptIncptOCR.x = pSegmentBarcode[i].min_intcpt;
-		ptIncptOCR.y = pSegmentBarcode[i].min_intcpt - 40;
-		ptOncptOCR.x = pSegmentBarcode[i].min_ontcpt;
-		ptOncptOCR.y = pSegmentBarcode[i].max_ontcpt;
-		InterceptCvt2Corners(ptIncptOCR, ptOncptOCR, pSegmentBarcode[i].angle, ptCornerOCR);
-		status = RotateImage(in_data, width, height, ptCornerOCR, pSegmentBarcode[i].angle, 
-			1, (short *) &rtt_width, (short *) &rtt_height);
-		if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-			printf( "Warning! Unexpected return of RotateImageOCR2, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-			continue;
-		}
-		ucBarcodeImage = GetRotateImage();
-		if( !ucBarcodeImage ) {
-#ifdef	_PRINT_PROMPT
-			printf( "Error! Unexpected return of GetRotateImageOCR2, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
-#endif
-			continue;
-		}
-
-		iplBarcodeImage = cvCreateImage(cvSize(rtt_width, rtt_height), 8, 1);
-		uc2IplImageGray(ucBarcodeImage, iplBarcodeImage);
-		cvNamedWindow("iplBarcodeImage");
-		cvShowImage("iplBarcodeImage", iplBarcodeImage);
-		cvWaitKey();
-		cvReleaseImage(&iplBarcodeImage);
-
-		QueryPerformanceCounter(&m_time2);
-
-		Algorithm_RecogChar(ucBarcodeImage, rtt_width, rtt_height,(72<<16)|(104<<8)|12, code_result);
-
-		QueryPerformanceCounter((LARGE_INTEGER*) &m_time1);
-		TimeCost = 1000.0*1000.0*(m_time1.QuadPart-m_time2.QuadPart)/m_frequency.QuadPart;
-		printf("\n-Algorithm_RecogChar 耗时: %ldus\n", TimeCost);
-
-		TimeCost = 0;
-		*/
 
 #ifdef _CUT_CHAR_
 		//////////////////////////////////////////////////////////////////////////
@@ -595,92 +428,6 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 		// OCR字符识别模块 END
 		//////////////////////////////////////////////////////////////////////////
 #endif _CUT_CHAR_
-
-		//////////////////////////////////////////////////////////////////////////
-		// OCR字符识别模块
-		// 若无法识别，则进入OCR字符识别
-#ifdef _OCR
-		if(1 != nDecodeFlag) {
-			// Step1
-			ptIncptOCR.x = pSegmentBarcode[i].min_intcpt - OCR_INTERCEPT_EXTEND;
-			ptIncptOCR.y = pSegmentBarcode[i].min_intcpt;
-			ptOncptOCR.x = pSegmentBarcode[i].min_ontcpt;
-			ptOncptOCR.y = pSegmentBarcode[i].max_ontcpt;
-			InterceptCvt2Corners(ptIncptOCR, ptOncptOCR, pSegmentBarcode[i].angle, ptCornerOCR);
-			status = RotateImage(in_data, width, height, ptCornerOCR, pSegmentBarcode[i].angle, 
-				1, (short *) &rtt_width, (short *) &rtt_height);
-			if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-				printf( "Warning! Unexpected return of RotateImageOCR, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-				continue;
-			}
-			ucBarcodeImage = GetRotateImage();
-			if( !ucBarcodeImage ) {
-#ifdef	_PRINT_PROMPT
-				printf( "Error! Unexpected return of GetRotateImageOCR, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
-#endif
-				continue;
-			}
-
-			// TODO: 此时ucBarcodeImage中存储的是条形码上方的图像，用作字符识别
-			status =  SetCodeNumberImage(2,ucBarcodeImage,rtt_width,rtt_height);
-			//status =  SetCodeNumberImage(2,ucBarcodeImage,1,1);
-			if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-				printf( "Warning! Unexpected return of SetCodeNumberTopImage, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-				continue;
-			}
-
-			// Step2
-			ptIncptOCR.x = pSegmentBarcode[i].max_intcpt;
-			ptIncptOCR.y = pSegmentBarcode[i].max_intcpt + OCR_INTERCEPT_EXTEND;
-			ptOncptOCR.x = pSegmentBarcode[i].min_ontcpt;
-			ptOncptOCR.y = pSegmentBarcode[i].max_ontcpt;
-			InterceptCvt2Corners(ptIncptOCR, ptOncptOCR, pSegmentBarcode[i].angle, ptCornerOCR);
-			status = RotateImage(in_data, width, height, ptCornerOCR, pSegmentBarcode[i].angle, 
-				1, (short *) &rtt_width, (short *) &rtt_height);
-			if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-				printf( "Warning! Unexpected return of RotateImageOCR2, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-				continue;
-			}
-			ucBarcodeImage = GetRotateImage();
-			if( !ucBarcodeImage ) {
-#ifdef	_PRINT_PROMPT
-				printf( "Error! Unexpected return of GetRotateImageOCR2, slice%d ucBarcodeImage=0x%x. --algorithm_run\n", i, ucBarcodeImage );
-#endif
-				continue;
-			}
-
-			// TODO: 此时ucBarcodeImage中存储的是条形码下方的图像，用作字符识别
-			status =  SetCodeNumberImage(1,ucBarcodeImage,rtt_width,rtt_height);
-			if( status <= 0 ) {
-#ifdef	_PRINT_PROMPT
-				printf( "Warning! Unexpected return of SetCodeNumberBottomImage, slice%d ret_val=%d. --algorithm_run\n", i, status );
-#endif
-				continue;
-			}
-			
-
-			// Step3
-			// TODO: 若找到结果，置nDecodeFlag为1，将结果写入code_result[]中，
-			// TODO: 置nCodeCharNum为条码结果位数，置codeDirect为1(条码正向)或-1(条码反向)
-
-			//获取数字图像
-			int codeHeight = abs(pSegmentBarcode[i].max_intcpt - pSegmentBarcode[i].min_intcpt + 1);
-			nDecodeFlag = NumberRecoge(codeHeight,code_result,&codeDigit,&codeDirect);
-			if(nDecodeFlag == 1)
-			{
-				codeModule = abs(pSegmentBarcode[i].max_ontcpt - pSegmentBarcode[i].min_ontcpt + 1);
-				IsNumberRecg = 1;
-			}
-
-		}
-#endif
-		//////////////////////////////////////////////////////////////////////////
 
 		if( 1 == nDecodeFlag ) {
 			UpdateCodeCorner(&pSegmentBarcode[i], codeOffsetL, codeOffsetR);

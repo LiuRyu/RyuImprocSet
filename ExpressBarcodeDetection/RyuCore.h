@@ -43,7 +43,7 @@
 //#define _DEBUG_SEGMENT	// 切割模块
 //#define _DEBUG_ROTATE		// 旋转模块
 //#define _DEBUG_IMGPROC	// 图像处理模块
-#define _DEBUG_DECODE		// 解码模块
+//#define _DEBUG_DECODE		// 解码模块
 //#define _DEBUG_DECODER_CODE128
 //#define _DEBUG_DECODER_CODE39
 //#define _DEBUG_DECODER_CODE93

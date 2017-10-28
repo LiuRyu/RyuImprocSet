@@ -56,14 +56,12 @@ void DecodeArrayAnalysis( int * column, int width, int height, RyuPoint * starts
 
 int BarcodeValidityCheck(char * strCode, int cntCodeChar);
 
-int BarcodeDecoding_DemarcateAnalysis();
-
 int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int width, int height, 
 									  int slice_height, int slice_top, int slice_bottom,
-									  int * decode_bcnt, int * decode_scnt);
+									  int * decode_bcnt, int * decode_scnt, float * min_module);
 
 // v2.5前版本解码算法
-int DecodeBarcode_v25Old( unsigned char * bina, int width, int height, int sliceH, 
+int DecodeBarcode( unsigned char * bina, int width, int height, int sliceH, 
 		char * code_result, int * code_type, int * char_num, int * module_num, 
 		int * code_direct, int * leftOffset, int * rightOffset)
 {
@@ -396,13 +394,12 @@ nExit:
 // v2.6版本开始使用的解码算法
 int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height, int slice_height, 
 								char * code_result, int * code_type, int * char_num, int * module_num, 
-								int * code_direct, int * leftOffset, int * rightOffset)
+								int * code_direct, int * leftOffset, int * rightOffset, float * minModule)
 {
 	int ret_val = 0;
 	int i = 0, k = 0, status = 0;
 
 	int slice_cnt = 0, slice_top = 0, slice_bottom = 0;
-	int nColCount = 0;
 
 	float * fDemarcCoord_basic = gpfDcdCoor_basic;
 	float * fDecodeElements_basic = gpfDcdDecodeArr_basic;
@@ -422,10 +419,11 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 	int nCodeWidth = 0, nLeftOffset = 0, nRightOffset = 0;
 	float fModuleWid = 0.0F;
 
-	float * fDemarcCoord[2] = {0};
-	int * nDecodeArrs[2] = {0};
-	int nDecodeCnts[2] = {0};
-	int nDecodeTime = 0, nDecodeFlag = 0;
+	int nColCount = 0;
+	int * pDecodeArr = 0;
+	float * pDemarcCoord = 0;
+
+	float fMinModule = 0.0, fAccModule = 0.0;
 
 	if( 1 != gnDcdInitFlag ) {
 		ret_val = -1;
@@ -453,29 +451,28 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 	slice_bottom = slice_height - 1;
 	for(i = 0; i < slice_cnt; i++) {
 		BarcodeDecoding_DemarcateAnalysis(im, integr, width, height, slice_height, slice_top, slice_bottom,
-			&nColCnt_basic, &nColCnt_strict);
-		nDecodeTime = nDecodeFlag = 0;
-		if(nColCnt_basic > 0) {
-			nDecodeArrs[nDecodeTime] = nDecodeArr_basic;
-			nDecodeCnts[nDecodeTime] = nColCnt_basic;
-			fDemarcCoord[nDecodeTime] = fDemarcCoord_basic;
-			nDecodeTime++;
-			nDecodeFlag |= 0x1;
-		}
-		if(nColCnt_strict > 0) {
-			nDecodeArrs[nDecodeTime] = nDecodeArr_strict;
-			nDecodeCnts[nDecodeTime] = nColCnt_strict;
-			fDemarcCoord[nDecodeTime] = fDemarcCoord_strict;
-			nDecodeTime++;
-			nDecodeFlag |= 0x2;
-		}
+			&nColCnt_basic, &nColCnt_strict, &fMinModule);
 
-		k = 0;
-		while(k < nDecodeTime) {
+		fAccModule = fAccModule + fMinModule;
+
+		// 分别使用basic和strict策略生成的宽度数组进行解码
+		for(k = 0; k < 2; k++) {
+			status = 0;
+			if(0 == k && nColCnt_basic > 0) {
+				pDecodeArr = nDecodeArr_basic;
+				nColCount = nColCnt_basic;
+				pDemarcCoord = fDemarcCoord_basic;
+			} else if(1 == k && nColCnt_strict > 0) {
+				pDecodeArr = nDecodeArr_strict;
+				nColCount = nColCnt_strict;
+				pDemarcCoord = fDemarcCoord_strict;
+			} else {
+				continue;
+			}
+
 			status = 0;
 			memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-			nColCount = nDecodeCnts[k];
-			memcpy( gpnDcdDecodeArrProc, nDecodeArrs[k], nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+			memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
 			status = RecgCode128(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
 				&nDirection, &nLeftIdx, &nRightIdx);
 			if( 1 == status ) {
@@ -485,8 +482,7 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 
 			status = 0;
 			memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-			nColCount = nDecodeCnts[k];
-			memcpy( gpnDcdDecodeArrProc, nDecodeArrs[k], nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+			memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
 			status = RecgCode39(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
 				&nDirection, &nLeftIdx, &nRightIdx);
 			if( 1 == status ) {
@@ -496,8 +492,7 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 
 			status = 0;
 			memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-			nColCount = nDecodeCnts[k];
-			memcpy( gpnDcdDecodeArrProc, nDecodeArrs[k], nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+			memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
 			status = RecgCode93(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
 				&nDirection, &nLeftIdx, &nRightIdx);
 			if( 1 == status ) {
@@ -507,8 +502,7 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 
 			status = 0;
 			memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-			nColCount = nDecodeCnts[k];
-			memcpy( gpnDcdDecodeArrProc, nDecodeArrs[k], nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+			memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
 			status = RecgCodeI2of5(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
 				&nDirection, &nLeftIdx, &nRightIdx);
 			if( 1 == status ) {
@@ -518,28 +512,27 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 
 			status = 0;
 			memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-			nColCount = nDecodeCnts[k];
-			memcpy( gpnDcdDecodeArrProc, nDecodeArrs[k], nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+			memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
 			status = RecgCodeEAN13(gpnDcdDecodeArr, gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
 				&nDirection, &nLeftIdx, &nRightIdx);
 			if( 1 == status ) {
 				nCodeType = 1<<4;
 				break;
 			}
-
-			k += 1;
 		}
 
-		if( 1 == status && k < 2) {
-			nLeftOffset = (int)fabs(fDemarcCoord[k][nLeftIdx]);
-			nRightOffset = (int)fabs(fDemarcCoord[k][nRightIdx+1]);
+		if( 1 == status) {
+			nLeftOffset = (int)fabs(pDemarcCoord[nLeftIdx]);
+			nRightOffset = (int)fabs(pDemarcCoord[nRightIdx+1]);
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
-			printf("-slice %d 找到条码！ slice_height = %d", i, slice_height);
+			printf("-slice %d 找到条码！ slice_height = %d ", i, slice_height);
 			if(0 == k) {
-				if(nDecodeFlag & 0x1) {
-					;
-				}
+				printf("basic策略生成\n");
+			} else if(1 == k) {
+				printf("strict策略生成\n");
+			} else {
+				printf("出现意外的k值! ERROR*****\n");
 			}
 #endif _DEBUG_DECODE
 #endif _DEBUG_
@@ -550,12 +543,18 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 		else {
 			printf("-slice %d 没有找到条码！\n", i);
 		}
+		cvWaitKey();
 #endif _DEBUG_DECODE
 #endif _DEBUG_
 
 		slice_top += (slice_height >> 1);
 		slice_bottom = slice_top + slice_height - 1;
 	}
+
+	if(slice_cnt)
+		*minModule = fAccModule / slice_cnt;
+	else
+		*minModule = 2.0;
 
 	if( status > 0 ) {
 		nCodeWidth = nRightOffset - nLeftOffset;
@@ -573,6 +572,7 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
+		printf("-BarcodeDecoding_run找到条码, slice_height=%d, ", slice_height);
 		if( 0x1 == nCodeType )
 			printf("-找到code128条码：%s\n", strResult);
 		else if( 0x2 == nCodeType)
@@ -591,10 +591,17 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 		ret_val = 0;
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
-		printf("-BarcodeDecoding_run没有找到条码\n");
+		printf("-BarcodeDecoding_run没有找到条码, slice_height=%d, ", slice_height);
+		printf("min_module=%2.3f\n", *minModule);
 #endif
 #endif
 	}
+
+#ifdef _DEBUG_
+#ifdef _DEBUG_DECODE
+	cvWaitKey();
+#endif _DEBUG_DECODE
+#endif _DEBUG_
 
 nExit:
 	return ret_val;
@@ -603,7 +610,7 @@ nExit:
 
 int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int width, int height, 
 									  int slice_height, int slice_top, int slice_bottom,
-									  int * decode_bcnt, int * decode_scnt) 
+									  int * decode_bcnt, int * decode_scnt, float * min_module) 
 {
 	int ret_val = 0;
 	int i = 0, j = 0, k = 0, status = 0;
@@ -1009,6 +1016,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 		}
 	}
 
+	fMin = (fMin > 0.5) ? fMin : 0.5;
+
 	// 未知区域划分，宽度写入
 	fDemarcCoord_basic[0] = demarc_effctv[0].gravity;
 	fDemarcCoord_strict[0] = demarc_effctv[0].gravity;
@@ -1145,7 +1154,7 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 #ifdef _DEBUG_DECODE
 	cvNamedWindow("Decode");
 	cvShowImage("Decode", iplBinaImg3C);
-	cvWaitKey();
+	//cvWaitKey();
 #endif _DEBUG_DECODE
 #endif _DEBUG_
 
@@ -1162,6 +1171,7 @@ nExit:
 
 	*decode_bcnt = decodeCnt_basic;
 	*decode_scnt = decodeCnt_strict;
+	*min_module = fMin;
 
 	return 1;
 }

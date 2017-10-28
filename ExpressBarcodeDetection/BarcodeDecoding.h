@@ -30,14 +30,14 @@ typedef struct DecodeDemarcateNode
 
 int BarcodeDecoding_init( int max_width, int max_height );
 
-// int DecodeBarcode_v25Old( unsigned char * bina, int width, int height, int sliceH, 
-// 	char * code_result, int * code_type, int * char_num, int * module_num, 
-// 	int * code_direct, int * leftOffset, int * rightOffset);
+int DecodeBarcode( unsigned char * bina, int width, int height, int sliceH, 
+	char * code_result, int * code_type, int * char_num, int * module_num, 
+	int * code_direct, int * leftOffset, int * rightOffset, float * minModule);
 
 // v2.6版本开始使用的解码算法
 int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height, int slice_height, 
 						char * code_result, int * code_type, int * char_num, int * module_num, 
-						int * code_direct, int * leftOffset, int * rightOffset);
+						int * code_direct, int * leftOffset, int * rightOffset, float * minModule);
 
 // int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, int height, int slice_height, 
 // 								char * code_result, int * code_type, int * char_num, int * module_num, 
