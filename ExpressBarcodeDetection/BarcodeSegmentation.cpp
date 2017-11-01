@@ -274,11 +274,6 @@ void UpdateCodeCorner( SegmentBarcodeArea * codeArea, int leftOffset, int rightO
 
 	const int fixedhalf = 1 << (TRIGONOMETRIC_SHIFT_DIGIT - 1);
 
-	if(1 == codeArea->flag) {
-		leftOffset /= 2;
-		rightOffset /= 2;
-	}
-
 	A = ryuCosShift( codeArea->angle + 90 );
 	B = ryuSinShift( codeArea->angle + 90 );
 	AT = ryuCosShift( codeArea->angle + 180 );
@@ -286,18 +281,12 @@ void UpdateCodeCorner( SegmentBarcodeArea * codeArea, int leftOffset, int rightO
 	tmpMaxAB = RYUMAX( abs(A), abs(B) );
 	ratio = tmpMaxAB * 1.0 / (1 << TRIGONOMETRIC_SHIFT_DIGIT);
 
-	leftOffset = (int)(leftOffset * 1.0 / ratio);
-	rightOffset = (int)(rightOffset * 1.0 / ratio);
-
-	dist = (int)((codeArea->max_ontcpt - codeArea->min_ontcpt + 1) * (1 - ratio + SEGMENT_EXTEND_WIDTH_RATIO));
-	dist = (dist + 1) / 2;
-
-	leftOffset -= dist;
-	rightOffset -= dist;
+	leftOffset = (int)(leftOffset * ratio);
+	rightOffset = (int)(rightOffset * ratio);
 
 	codeArea->max_ontcpt -= leftOffset;
 	codeArea->min_ontcpt += rightOffset;
-
+	
 	codeArea->corner[0].x = (codeArea->min_intcpt * BT - codeArea->max_ontcpt * B + fixedhalf)
 		>> TRIGONOMETRIC_SHIFT_DIGIT;
 	codeArea->corner[0].y = (codeArea->max_ontcpt * A - codeArea->min_intcpt * AT + fixedhalf)
@@ -1578,7 +1567,15 @@ int GetBarcodePureAreaFigures( RyuPoint * intercept, int * param1, int count1,
 	AT = ryuCosShift( angle+ 180 );
 	BT = ryuSinShift( angle+ 180 );
 	tmpMaxAB = RYUMAX( abs(A), abs(B) );
-	ratio = tmpMaxAB * 1.0 / (1 << TRIGONOMETRIC_SHIFT_DIGIT)-SEGMENT_EXTEND_WIDTH_RATIO;
+
+	//////////////////////////////////////////////////////////////////////////
+	// [v2.6.1] 注释为
+	//ratio = tmpMaxAB * 1.0 / (1 << TRIGONOMETRIC_SHIFT_DIGIT)-SEGMENT_EXTEND_WIDTH_RATIO;
+
+	// [v2.6.1] 更改为
+	ratio = tmpMaxAB * 1.0 / (1 << TRIGONOMETRIC_SHIFT_DIGIT);
+	ratio = ratio - (1 - ratio) / 2;
+	//////////////////////////////////////////////////////////////////////////
 
 	offsetIn = (LTRB[0] * A + LTRB[1] * B + fixedhalf) >> TRIGONOMETRIC_SHIFT_DIGIT;
 	offsetOn = (LTRB[0] * AT + LTRB[1] * BT + fixedhalf) >> TRIGONOMETRIC_SHIFT_DIGIT;
@@ -1655,15 +1652,19 @@ int GetBarcodePureAreaFigures( RyuPoint * intercept, int * param1, int count1,
 				>> TRIGONOMETRIC_SHIFT_DIGIT;
 
 			tempSegment.angle = angle;
-//			dist = tempSegment.max_ontcpt - tempSegment.min_ontcpt + 1;
-//			ratio = param2[j] * 1.0 / dist;
-//			if( dist > SEGMENT_ZOOM_WIDTH_THRESH && ratio < SEGMENT_ZOOM_RATIO_THRESH ) {
-			ratio = param2[j] * 1.0 / codeW;
-			if( codeW > SEGMENT_ZOOM_WIDTH_THRESH && ratio < SEGMENT_ZOOM_RATIO_THRESH ) {
-				tempSegment.flag = 0;
-			} else {
-				tempSegment.flag = 1;
-			}
+			//////////////////////////////////////////////////////////////////////////
+			// [v2.6.1] 放大标志在后续代码中被废弃使用，故此处
+			// [v2.6.1] 注释为
+// 			ratio = param2[j] * 1.0 / codeW;
+// 			if( codeW > SEGMENT_ZOOM_WIDTH_THRESH && ratio < SEGMENT_ZOOM_RATIO_THRESH ) {
+// 				tempSegment.flag = 0;
+// 			} else {
+// 				tempSegment.flag = 1;
+// 			}
+
+			// [v2.6.1] 更改为
+			tempSegment.flag = 0;
+			//////////////////////////////////////////////////////////////////////////
 
 			barcode_area[totalCnt++] = tempSegment;
 #ifdef	_DEBUG_
@@ -1692,13 +1693,36 @@ int GetBarcodePureAreaFigures( RyuPoint * intercept, int * param1, int count1,
 	// 绘制一下
 	IplImage * iplSrcSlice3C = cvCreateImage(cvGetSize(giplSrcSlice), 8, 3);
 	cvCvtColor(giplSrcSlice, iplSrcSlice3C, CV_GRAY2BGR);
+	cvInitFont( &cvSgmFont, CV_FONT_HERSHEY_PLAIN, 1, 1, 0.0, 1, CV_AA );
 	for(i = 0; i < totalCnt; i++) {
 		for(j = 0; j < 4; j++) {
 			cvCircle(iplSrcSlice3C, cvPoint(barcode_area[i].corner[j].x-LTRB[0], barcode_area[i].corner[j].y-LTRB[1])
 				, 3, CV_RGB(0,255,0), CV_FILLED);
+
+			sprintf(cvSgmTxt, "%d", j);
+			cvPutText( iplSrcSlice3C, cvSgmTxt, cvPoint(barcode_area[i].corner[j].x-LTRB[0], barcode_area[i].corner[j].y-LTRB[1]), 
+				&cvSgmFont, CV_RGB(255,255,0) );
+
 			cvCircle(iplSrcSlice3C, cvPoint(barcode_area[i].corner_ext[j].x-LTRB[0], barcode_area[i].corner_ext[j].y-LTRB[1])
 				, 3, CV_RGB(0,0,255), CV_FILLED);
 		}
+
+		sprintf(cvSgmTxt, "%d:min_in", i);
+		cvPutText( iplSrcSlice3C, cvSgmTxt, cvPoint((barcode_area[i].corner[0].x+barcode_area[i].corner[2].x)/2-LTRB[0], 
+			(barcode_area[i].corner[0].y+barcode_area[i].corner[2].y)/2-LTRB[1]), 
+			&cvSgmFont, CV_RGB(255,255,0) );
+		sprintf(cvSgmTxt, "%d:max_in", i);
+		cvPutText( iplSrcSlice3C, cvSgmTxt, cvPoint((barcode_area[i].corner[1].x+barcode_area[i].corner[3].x)/2-LTRB[0], 
+			(barcode_area[i].corner[1].y+barcode_area[i].corner[3].y)/2-LTRB[1]), 
+			&cvSgmFont, CV_RGB(255,255,0) );
+		sprintf(cvSgmTxt, "%d:min_on", i);
+		cvPutText( iplSrcSlice3C, cvSgmTxt, cvPoint((barcode_area[i].corner[2].x+barcode_area[i].corner[3].x)/2-LTRB[0], 
+			(barcode_area[i].corner[2].y+barcode_area[i].corner[3].y)/2-LTRB[1]), 
+			&cvSgmFont, CV_RGB(255,255,0) );
+		sprintf(cvSgmTxt, "%d:max_on", i);
+		cvPutText( iplSrcSlice3C, cvSgmTxt, cvPoint((barcode_area[i].corner[0].x+barcode_area[i].corner[1].x)/2-LTRB[0], 
+			(barcode_area[i].corner[0].y+barcode_area[i].corner[1].y)/2-LTRB[1]), 
+			&cvSgmFont, CV_RGB(255,255,0) );
 	}
 	cvNamedWindow("ImageSlice");
 	cvShowImage("ImageSlice", iplSrcSlice3C);
