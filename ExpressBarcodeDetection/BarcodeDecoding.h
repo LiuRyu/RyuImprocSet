@@ -14,7 +14,9 @@
 #define RYU_DECODERR_VERIFYFAILED	(-6)
 #define RYU_DECODERR_TRANSCFAILED	(-7)
 
-
+/************************************************************************/
+/* 解码主模块	                                                        */
+/************************************************************************/
 typedef struct DecodeDemarcateNode
 {
 	int type;
@@ -44,6 +46,20 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 // 								int * code_direct, int * leftOffset, int * rightOffset);
 
 void BarcodeDecoding_release();
+
+
+/************************************************************************/
+/* Code128解码模块                                                      */
+/************************************************************************/
+int allocVariableMemStorage_code128(unsigned char * heapPtr, int heapSize);
+
+int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
+				int * code_module, int * code_direct, int * code_idxL, int * code_idxR);
+
+int Decoder_code128(int * decode_arr, int arr_count, 
+					char * code_result, int * code_digit, int * code_module, 
+					int * code_direct, int * code_idxL, int * code_idxR);
+
 
 #endif
 

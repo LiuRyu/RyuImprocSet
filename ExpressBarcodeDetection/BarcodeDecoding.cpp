@@ -6,7 +6,6 @@
 
 #include "RyuCore.h"
 
-#include "Decoder_code128.h"
 #include "Decoder_code39.h"
 #include "Decoder_code93.h"
 #include "Decoder_I2of5.h"
@@ -30,9 +29,6 @@ int * gpnDcdDecodeArrProc = 0;
 
 RyuPoint * gptDcdStartstop = 0;
 
-int * gpnDcdStartCands = 0;
-int * gpnDcdStopCands = 0;
-
 DecodeDemarcateNode * gpDDNOrig_arr = 0;
 DecodeDemarcateNode * gpDDNEffc_arr = 0;
 
@@ -43,6 +39,9 @@ float * gpfDcdCoor_strict = 0;
 float * gpfDcdDecodeArr_strict = 0;
 
 int * gpnDcdDecodeArr2 = 0;
+
+unsigned char * gpDcdDecoderMemSets = 0;
+const int gpDcdDecoderMemSize = 12800;
 
 int gnDcdInitFlag = 0;
 
@@ -473,8 +472,10 @@ int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height
 			status = 0;
 			memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
 			memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-			status = RecgCode128(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
-				&nDirection, &nLeftIdx, &nRightIdx);
+// 			status = RecgCode128(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
+// 				&nDirection, &nLeftIdx, &nRightIdx);
+			status = Decoder_code128(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
+						&nDirection, &nLeftIdx, &nRightIdx);
 			if( 1 == status ) {
 				nCodeType = 0x1;
 				break;
@@ -1846,7 +1847,7 @@ nExit:
 
 int BarcodeDecoding_init( int max_width, int max_height )
 {
-	int nRet = 0;
+	int nRet = 0, status = 0;
 
 	gnDcdMaxWidth = max_width;
 	gnDcdMaxHeight = max_height;
@@ -1906,16 +1907,6 @@ int BarcodeDecoding_init( int max_width, int max_height )
 		goto nExit;
 	}
 
-	gpnDcdStartCands = (int *) malloc( gnDcdMaxLineSize * sizeof(int) );
-	gpnDcdStopCands = (int *) malloc( gnDcdMaxLineSize * sizeof(int) );
-	if( !gpnDcdStartCands || !gpnDcdStopCands) {
-#ifdef	_PRINT_PROMPT
-		printf("ERROR! Cannot alloc memory for gpnDcdStartCands & gpnDcdStopCands in BarcodeDecoding_init\n");
-#endif
-		nRet = -1;
-		goto nExit;
-	}
-
 	gpDDNOrig_arr = (DecodeDemarcateNode *)malloc(gnDcdMaxLineSize * sizeof(DecodeDemarcateNode));
 	gpDDNEffc_arr = (DecodeDemarcateNode *)malloc(gnDcdMaxLineSize * sizeof(DecodeDemarcateNode));
 	if( !gpDDNOrig_arr || !gpDDNEffc_arr) {
@@ -1955,6 +1946,24 @@ int BarcodeDecoding_init( int max_width, int max_height )
 		goto nExit;
 	}
 
+	gpDcdDecoderMemSets = (unsigned char *)malloc(gpDcdDecoderMemSize *  sizeof(unsigned char));
+	if( !gpDcdDecoderMemSets ) {
+#ifdef	_PRINT_PROMPT
+		printf("ERROR! Cannot alloc memory for gpDcdDecoderMemSets in BarcodeDecoding_init\n");
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+
+	status = allocVariableMemStorage_code128(gpDcdDecoderMemSets, gpDcdDecoderMemSize);
+	if(1 != status) {
+#ifdef	_PRINT_PROMPT
+		printf("ERROR! Cannot alloc memory for code128 decoder in BarcodeDecoding_init\n");
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+
 	nRet = gnDcdInitFlag = 1;
 
 nExit:
@@ -1986,16 +1995,6 @@ void BarcodeDecoding_release()
 	if(gptDcdStartstop) {
 		free(gptDcdStartstop);
 		gptDcdStartstop = 0;
-	}
-
-	if(gpnDcdStartCands) {
-		free(gpnDcdStartCands);
-		gpnDcdStartCands = 0;
-	}
-
-	if(gpnDcdStopCands) {
-		free(gpnDcdStopCands);
-		gpnDcdStopCands = 0;
 	}
 
 	if(gpDDNOrig_arr) {

@@ -15,7 +15,18 @@
 
 #define FNC_AVG_VALUE(v0, c0, v1, c1)	(((v0) * (c0) + (v1) * (c1)) / ((c0) + (c1)))
 
-#define AUTOCONTRAST_THRESHOLD_RATIO_L	(0.05)
+//////////////////////////////////////////////////////////////////////////
+// [v2.6.1] 图像中存在强反光时，条码提取不完整
+// [v2.6.1] 注释为
+//#define AUTOCONTRAST_THRESHOLD_RATIO_L	(0.05)
+// [v2.6.1] 更改为
+#define AUTOCONTRAST_THRESHOLD_RATIO_L	(0.1)
+// [v2.6.1] 新增为
+#define LOCATE_OUTPUT_MAXWIDTH			(1200)
+#define LOCATE_OUTPUT_MAXHEIGHT			(600)
+#define LOCATE_OUTPUT_MAXAREAS			(360000)
+//////////////////////////////////////////////////////////////////////////
+
 #define GRADHIST_THRE					(36)
 
 //++++++++++++++++++++++++++++++++++重要改进+++++++++++++++++++++++++++++++++++++\\
@@ -2058,7 +2069,8 @@ int FNC_LBC03_LineCluster2Area(int line_cnt)
 		// 版本2.3.2修改20170228
 		// 过滤掉超大型区域，优化算法时间
 		//printf("[%d] C0=%d, CT0=%d, AREA=%d\n", i, C0, CT0, C0*CT0);
-		if(C0 > 600 || CT0 > 1200 || C0 * CT0 > 200000) {
+		if(C0 > LOCATE_OUTPUT_MAXHEIGHT || CT0 > LOCATE_OUTPUT_MAXWIDTH 
+			|| C0 * CT0 > LOCATE_OUTPUT_MAXAREAS) {
 			pBlobClusArea[i].flag = 0;
 			continue;
 		}

@@ -127,7 +127,8 @@ int RecgCode39(int * decode_arr, int arr_count, char * code_result, int * code_d
 	// 校验位检验，仅限于有校验位的39条码
 	status = CheckDigitVerify_code39( gnDecoderSeqArrCode39, gnDecoderFaithArrCode39, nSeqCount, 0 );
 	if(1 != status ) {
-#ifdef	_DEBUG_
+#ifdef	_DEBUG_
+
 #ifdef  _DEBUG_DECODER_CODE39
 		printf("Cannot find code39, check digit verification failed, return=%d\n", status);
 #endif

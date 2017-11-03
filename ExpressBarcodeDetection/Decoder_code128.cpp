@@ -6,7 +6,6 @@
 #include "RyuCore.h"
 
 #include "BarcodeDecoding.h"
-#include "Decoder_code128.h"
 
 #ifdef	_DEBUG_
 #ifdef  _DEBUG_DECODER_CODE128
@@ -14,6 +13,7 @@
 #endif
 #endif
 
+#define CODE128_MAX_DECODEARR_COUNT		(128)
 #define CODE128_MIN_DECODEARR_COUNT		(25)
 #define CODE128_MIN_SEQARR_COUNT		(3)
 //////////////////////////////////////////////////////////////////////////
@@ -38,10 +38,24 @@ const int gnDecoderModuleCode128[107] = {
 	0x114131, 0x311141, 0x411131, 0x211412, 0x211214, 0x211232, 0x2331112/*stop*/
 };
 
-static int gnDecoderSeqArrCode128[128] = {0};
-static int gnDecoderFaithArrCode128[128] = {0};
+// static int gnDecoderSeqArrCode128[128] = {0};
+// static int gnDecoderFaithArrCode128[128] = {0};
+
+const int maxArrLength_code128 = 128;
+
+int * gnDecoderProcArr_code128 = 0;
+
+int * gnDecoderSeqArrCode128 = 0;
+int * gnDecoderFaithArrCode128 = 0;
+
+int * gnDecoderStartArr_code128 = 0;
+int * gnDecoderStopArr_code128 = 0;
+RyuPoint * gptDecoderStArr_code128 = 0;
+
 
 int CodeStartStopMatch_code128( int * decode_arr, int arr_count,  int * start_idx, int * stop_idx );
+
+int DcdrFindCodeSt_code128(int * decode_arr, int arr_count);
 
 int CodeModelMatch_code128(int * decode_arr, int arr_count, int * seq_arr, int * faith_arr);
 
@@ -50,16 +64,55 @@ int CheckDigitVerify_code128(int * seq_arr, int * faith_arr, int seq_cnt);
 int Transcode_code128( int * seq_arr, int seq_cnt, char * strResult );
 
 
-int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
-		int * code_module, int * code_direct, int * code_idxL, int * code_idxR)
+int allocVariableMemStorage_code128(unsigned char * heapPtr, int heapSize)
+{
+	int offset = 0;
+
+	gnDecoderProcArr_code128 = (int *)(heapPtr + offset);
+	offset += maxArrLength_code128 * sizeof(int);
+	if(offset > heapSize)
+		return 0;
+
+	gnDecoderSeqArrCode128 = (int *)(heapPtr + offset);
+	offset += maxArrLength_code128 * sizeof(int);
+	if(offset > heapSize)
+		return 0;
+
+	gnDecoderFaithArrCode128 = (int *)(heapPtr + offset);
+	offset += maxArrLength_code128 * sizeof(int);
+	if(offset > heapSize)
+		return 0;
+
+	gnDecoderStartArr_code128 = (int *)(heapPtr + offset);
+	offset += maxArrLength_code128 * sizeof(int);
+	if(offset > heapSize)
+		return 0;
+
+	gnDecoderStopArr_code128 = (int *)(heapPtr + offset);
+	offset += maxArrLength_code128 * sizeof(int);
+	if(offset > heapSize)
+		return 0;
+
+	gptDecoderStArr_code128 = (RyuPoint *)(heapPtr + offset);
+	offset += maxArrLength_code128 * sizeof(RyuPoint);
+	if(offset > heapSize)
+		return 0;
+	
+	return 1;
+}
+
+int RecgCode128(int * decode_arr, /*int * decode_proc_arr, */int arr_count, 
+				char * code_result, int * code_digit, int * code_module, 
+				int * code_direct, int * code_idxL, int * code_idxR)
 {
 	int nRet = 0, status = 0;
+	int nStCnt = 0;
 
 	int nDigitCnt = 0, nModuleCnt = 0, nDirection = 0;
 	int nStartIdx = 0, nStopIdx = 0;
 	int nArrCount = 0, nSeqCount = 0;
 
-	if(!decode_arr || !code_result || !code_digit || !code_module
+	if(!decode_arr || /*!decode_proc_arr ||*/ !code_result || !code_digit || !code_module
 		|| !code_direct || !code_idxL || !code_idxR) {
 #ifdef	_PRINT_PROMPT
 			printf( "ERROR! Invalid input of RecgCode128, decode_arr=0x%x, code_result=0x%x\
@@ -157,6 +210,136 @@ int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_
 	*code_idxL = (nDirection > 0) ? nStartIdx : (arr_count-1-nStopIdx);
 	*code_idxR = (nDirection > 0) ? nStopIdx : (arr_count-1-nStartIdx);
 	nRet = 1;
+
+nExit:
+	return nRet;
+}
+
+
+int Decoder_code128(int * decode_arr, int arr_count, 
+				char * code_result, int * code_digit, int * code_module, 
+				int * code_direct, int * code_idxL, int * code_idxR)
+{
+	int nRet = 0, status = 0;
+	int i = 0, j = 0;
+
+	int nDigitCnt = 0, nModuleCnt = 0, nDirection = 0, nDirection0 = 0;
+	int nStartIdx = 0, nStopIdx = 0;
+	int nArrCount = 0, nSeqCount = 0;
+	int nIsRcg = 0;
+
+	int nStCnt = 0;
+	RyuPoint * pStpArr = gptDecoderStArr_code128;
+
+	int * pProcArr = gnDecoderProcArr_code128;
+
+	if(!decode_arr || !code_result || !code_digit || !code_module
+		|| !code_direct || !code_idxL || !code_idxR) {
+#ifdef	_PRINT_PROMPT
+			printf( "ERROR! Invalid input of RecgCode128, decode_arr=0x%x, code_result=0x%x\
+					, code_digit=0x%x, code_module=0x%x, code_direct=0x%x, code_idxL=0x%x\
+					, code_idxR=0x%x\n", decode_arr, code_result, code_digit, code_module, \
+					code_direct, code_idxL, code_idxR );
+#endif
+			nRet = RYU_DECODERR_NULLPTR;
+			goto nExit;
+	}
+
+	// 重置初始状态
+	code_result[0] = 0;
+	*code_digit = *code_module = *code_direct = *code_idxL = 0;
+	*code_idxR = arr_count - 1;
+
+	if( arr_count < CODE128_MIN_DECODEARR_COUNT ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf("[Decoder_code128]- Cannot find code128, too small arr_count: %d\n", arr_count);
+#endif
+#endif
+		nRet = RYU_DECODERR_SHORTLEN;
+		goto nExit;
+	}
+
+	nStCnt = DcdrFindCodeSt_code128(decode_arr, arr_count);
+	if(0 >= nStCnt) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf("[Decoder_code128]- Cannot find code start/stop, bad nStCnt: %d\n", nStCnt);
+#endif
+#endif
+		nRet = RYU_DECODERR_NOST;
+		goto nExit;
+	}
+
+	for(i = 0; i < nStCnt; i++) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf("[Decoder_code128]- ******** St loop %d(/%d) ********\n", i, nStCnt);
+		printf("[Decoder_code128]- start_idx = %d, stop_idx = %d\n", pStpArr[i].x, pStpArr[i].y);
+#endif
+#endif
+		if(pStpArr[i].x < pStpArr[i].y) {
+			nDirection = 1;
+			nArrCount = pStpArr[i].y - pStpArr[i].x + 1;
+			for(j = 0; j < nArrCount; j++) {
+				pProcArr[j] = decode_arr[pStpArr[i].x+j];
+			}
+		} else {
+			nDirection = -1;
+			nArrCount = pStpArr[i].x - pStpArr[i].y + 1;
+			for(j = 0; j < nArrCount; j++) {
+				pProcArr[j] = decode_arr[pStpArr[i].x-j];
+			}
+		}
+
+		nDirection0 = i ? nDirection0 : nDirection;
+
+		nSeqCount = CodeModelMatch_code128(pProcArr, nArrCount, 
+			gnDecoderSeqArrCode128, gnDecoderFaithArrCode128);
+		if( nSeqCount < CODE128_MIN_SEQARR_COUNT ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("[Decoder_code128]- Cannot match code model, bad nSeqCount: %d\n", nSeqCount);
+#endif
+#endif
+			continue;
+		}
+
+		status = CheckDigitVerify_code128(gnDecoderSeqArrCode128, gnDecoderFaithArrCode128, nSeqCount);
+		if(1 != status ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("[Decoder_code128]- Cannot go-through digit verification, bad return: %d\n", status);
+#endif
+#endif
+			continue;
+		}
+
+		status = Transcode_code128(gnDecoderSeqArrCode128, nSeqCount, code_result);
+		if( status <= 0 ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("[Decoder_code128]- Cannot transcode, bad return: %d\n", status);
+#endif
+#endif
+			code_result[0] = 0;
+			continue;
+		}
+
+		nStartIdx = pStpArr[i].x;
+		nStopIdx = pStpArr[i].y;
+		nDigitCnt = status;
+		nModuleCnt = nSeqCount * 11 + 13;
+		nIsRcg = 1;
+		break;
+	}
+
+	*code_digit = nDigitCnt;
+	*code_module = nModuleCnt;
+	*code_direct = nIsRcg ? nDirection : nDirection0;
+	*code_idxL = (nDirection > 0) ? nStartIdx : nStopIdx;
+	*code_idxR = (nDirection > 0) ? nStopIdx : nStartIdx;
+	nRet = nIsRcg;
 
 nExit:
 	return nRet;
@@ -489,6 +672,269 @@ int CodeStartStopMatch_code128( int * decode_arr, int arr_count,  int * start_id
 
 nExit:
 	return nRet;
+}
+
+int DcdrCheckStValid_code128(int start_idx, int stop_idx)
+{
+	int nCnt = stop_idx - start_idx + 1;
+	if( nCnt > CODE128_MAX_DECODEARR_COUNT
+		|| nCnt < CODE128_MIN_DECODEARR_COUNT || 0 != (nCnt-1) % 6)
+		return 0;
+	else
+		return 1;
+}
+
+int DcdrFindCodeSt_code128( int * decode_arr, int arr_count )
+{
+	int nRet = 0;
+	int i = 0, j = 0, n = 0;
+
+	int * pCodeCol = 0;
+	int * pStartArr = gnDecoderStartArr_code128;
+	int nStartCnt = 0;
+	int * pStopArr = gnDecoderStopArr_code128;
+	int nStopCnt = 0;
+	RyuPoint * pStartStopArr = gptDecoderStArr_code128;
+	int nStartStopCnt = 0;
+
+	int s = 0, mask = 0;
+	int f[8] = {0}, r[8] = {0};
+
+	int nVar = 0, nMin = 0, nMinSeq = 0;
+	RyuPoint ptTmp;
+
+	const int half_fixed = 1 << (FLOAT2FIXED_SHIFT_DIGIT - 1);
+
+	//////////////////////////////////////////////////////////////////////////
+	// 正向寻找条码起始位或反向终止符号位
+	pCodeCol = decode_arr;
+	for( i = 0; i < arr_count - 6; i++, pCodeCol++ ) {
+		if( pCodeCol[0] > 0 )	// 规定从黑色开始
+			continue;
+
+		s = -pCodeCol[0] + pCodeCol[1] - pCodeCol[2] + pCodeCol[3] - pCodeCol[4] + pCodeCol[5];
+		if( 0 >= s ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Unexpected format of decode_arr in CodeStartStopMatch_code128\n" );
+#endif
+#endif
+			nRet = -1;
+			goto nExit;
+		}
+		// 对比开始位
+		mask = 0;
+		for( j = 0; j < 6; j++ ) {
+			f[j] = (abs(pCodeCol[j]) << FLOAT2FIXED_SHIFT_DIGIT) * 11 / s;
+			r[j] = (f[j] + half_fixed) >> FLOAT2FIXED_SHIFT_DIGIT;
+			mask |= (r[j] << (20-4*j));
+		}
+
+		if(mask == gnDecoderModuleCode128[103] || mask == gnDecoderModuleCode128[104]
+			|| mask == gnDecoderModuleCode128[105]) {
+			pStartArr[nStartCnt++] = i;
+			continue;
+		}
+
+		//寻找距离最近者
+		nMin = 0x7fffffff;
+		for(n = 0; n < 106; n++) {
+			mask = gnDecoderModuleCode128[n];
+			nVar = abs(f[0]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+				+ abs(f[1]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[2]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[3]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[4]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[5]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+			if(nVar < nMin) {
+				nMin = nVar;
+				nMinSeq = n;
+			}
+		}
+
+		s -= pCodeCol[6];
+		if( 0 >= s ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Unexpected format of decode_arr in CodeStartStopMatch_code128\n" );
+#endif
+#endif
+			nRet = -1;
+			goto nExit;
+		}
+		// 对比反向结束位
+		mask = 0;
+		for( j = 0; j < 7; j++ ) {
+			f[j] = (abs(pCodeCol[j]) << FLOAT2FIXED_SHIFT_DIGIT) * 13 / s;
+			r[j] = (f[j] + half_fixed) >> FLOAT2FIXED_SHIFT_DIGIT;
+			mask |= (r[j] << (j*4));
+		}
+		if(mask == gnDecoderModuleCode128[106]) {
+			pStopArr[nStopCnt++] = 0 - i;
+			continue;
+		}
+
+		// 计算距离
+		mask = gnDecoderModuleCode128[106];
+		nVar = abs(f[6]-((mask>>24&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+			+ abs(f[5]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[4]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[3]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[2]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[1]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+			+ abs(f[0]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+
+		if(nVar < nMin) {
+			pStopArr[nStopCnt++] = 0 - i;
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Cannot find Code128 start/end directly on left, replaced with min deviation one(start)\n" );
+#endif
+#endif
+		} else if(103 == nMinSeq || 104 == nMinSeq || 105 == nMinSeq) {
+			pStartArr[nStartCnt++] = i;
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Cannot find Code128 start/end directly on left, replaced with min deviation one(start)\n" );
+#endif
+#endif
+		}
+	}
+
+	// 找不到开始或终止位
+	if(0 >= nStartCnt && 0 >= nStopCnt) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf("Cannot find code128, cannot find start/~end in CodeStartStopMatch_code128\n");
+#endif
+#endif
+		nRet = 0;
+		goto nExit;
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	// 反向搜索条码终止位或反向开始符号位
+	pCodeCol = decode_arr + arr_count - 1;
+	for(i = 0; i < arr_count - 6; i++, pCodeCol--) {
+		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
+			continue;
+		}
+		s = -pCodeCol[0] + pCodeCol[-1] - pCodeCol[-2] + pCodeCol[-3] - pCodeCol[-4] + pCodeCol[-5];
+		if( 0 >= s ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Unexpected format of decode_arr in CodeStartStopMatch_code128\n" );
+#endif
+#endif
+			nRet = -1;
+			goto nExit;
+		}
+		// 对比反向开始位
+		mask = 0;
+		for( j = 0; j < 6; j++ ) {
+			f[j] = (abs(pCodeCol[-j]) << FLOAT2FIXED_SHIFT_DIGIT) * 11 / s;
+			r[j] = (f[j] + half_fixed) >> FLOAT2FIXED_SHIFT_DIGIT;
+			mask |= (r[j] << (20-4*j));
+		}
+		if(mask == gnDecoderModuleCode128[103] || mask == gnDecoderModuleCode128[104]
+			|| mask == gnDecoderModuleCode128[105]) {
+			pStartArr[nStartCnt++] = i - (arr_count - 1);
+			continue;
+		}
+
+		//寻找距离最近者
+		nMin = 0x7fffffff;
+		for( n = 0; n < 106; n++ ) {
+			mask = gnDecoderModuleCode128[n];
+			nVar = abs(f[0]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+				+ abs(f[1]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[2]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[3]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[4]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+				+ abs(f[5]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+			if( nVar < nMin ) {
+				nMin = nVar;
+				nMinSeq = n;
+			}
+		}
+
+		s -= pCodeCol[-6];
+		if( 0 >= s ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Unexpected format of decode_arr in CodeStartStopMatch_code128\n" );
+#endif
+#endif
+			nRet = -1;
+			goto nExit;
+		}
+		// 对比结束位
+		mask = 0;
+		for( j = 0; j < 7; j++ ) {
+			f[j] = (abs(pCodeCol[-j]) << FLOAT2FIXED_SHIFT_DIGIT) * 13 / s;
+			r[j] = (f[j] + half_fixed) >> FLOAT2FIXED_SHIFT_DIGIT;
+			mask |= (r[j] << (j*4));
+		}
+		if(mask == gnDecoderModuleCode128[106]) {
+			pStopArr[nStopCnt++] = arr_count - 1 - i;
+			continue;
+		}
+
+		// 计算距离
+		mask = gnDecoderModuleCode128[106];
+		nVar = abs(f[0]-((mask>>24&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+			+ abs(f[1]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[2]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[3]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[4]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[5]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+			+ abs(f[6]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+
+		if( nVar < nMin ) {
+			pStopArr[nStopCnt++] = arr_count - 1 - i;
+
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Cannot find Code128 start/end directly on right, replaced with min deviation one(stop)\n" );
+#endif
+#endif
+		} else if(103 == nMinSeq || 104 == nMinSeq || 105 == nMinSeq) {
+			pStartArr[nStartCnt++] = i - (arr_count - 1);
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf( "Cannot find Code128 start/end directly on left, replaced with min deviation one(start)\n" );
+#endif
+#endif
+		}
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	// 开始结束位配对，根据宽度排序
+	for(i = 0; i < nStartCnt; i++) {
+		for(j = 0; j < nStopCnt; j++) {
+			if(pStartArr[i] < pStopArr[j] && 
+				((pStartArr[i] >= 0 && pStopArr[j] > 0) || (pStartArr[i] < 0 && pStopArr[j] <= 0))) {
+					nVar = DcdrCheckStValid_code128(pStartArr[i], pStopArr[j]);
+					if(1 == nVar) {
+						pStartStopArr[nStartStopCnt++] = ryuPoint(abs(pStartArr[i]), abs(pStopArr[j]));
+					}
+			}
+		}
+	}
+
+	for(i = 0; i < nStartStopCnt; i++) {
+		for(j = i+1; j < nStartStopCnt; j++) {
+			if(abs(pStartStopArr[j].x-pStartStopArr[j].y) 
+				> abs(pStartStopArr[i].x-pStartStopArr[i].y)) {
+				ptTmp = pStartStopArr[i];
+				pStartStopArr[i] = pStartStopArr[j];
+				pStartStopArr[j] = ptTmp;
+			}
+		}
+	}
+
+nExit:
+	return nStartStopCnt;
 }
 
 
