@@ -37,6 +37,20 @@ const int gnDecoderModuleCode128[107] = {
 	0x114131, 0x311141, 0x411131, 0x211412, 0x211214, 0x211232, 0x2331112/*stop*/
 };
 
+// const int gnDecoderModuleStdCode128[108] = {
+// 	0x33446, 0x44336, 0x44446, 0x33344, 0x33454, 0x44344, 0x34434, 0x34544, 0x45434, 0x43334,
+// 	0x43444, 0x54334, 0x23456, 0x34346, 0x34456, 0x24546, 0x35436, 0x35546, 0x45536, 0x43246,
+// 	0x43356, 0x34536, 0x45426, 0x43348, 0x42346, 0x53236, 0x53346, 0x43436, 0x54326, 0x54436,
+// 	0x33336, 0x33556, 0x55336, 0x22454, 0x44234, 0x44454, 0x23544, 0x45324, 0x45544, 0x32444,
+// 	0x54224, 0x54444, 0x23346, 0x23566, 0x45346, 0x24436, 0x24656, 0x46436, 0x44438, 0x32466, 
+// 	0x54246, 0x34426, 0x34646, 0x34448, 0x42236, 0x42456, 0x64236, 0x43326, 0x43546, 0x65326,
+// 	0x45528, 0x43554, 0x74226, 0x22344, 0x22564, 0x33234, 0x33564, 0x55234, 0x55344, 0x23434,
+// 	0x23654, 0x34324, 0x34654, 0x56324, 0x56434, 0x65334, 0x43224, 0x54428, 0x65224, 0x47526,
+// 	0x22366, 0x33256, 0x33366, 0x25636, 0x36526, 0x36636, 0x52336, 0x63226, 0x63336, 0x33358,
+// 	0x35538, 0x53338, 0x22256, 0x22476, 0x44256, 0x25526, 0x25746, 0x52226, 0x52446, 0x24458,
+// 	0x25548, 0x42258, 0x52248, 0x32554, 0x32334, 0x32356, 0x56426, 0x32246
+// };
+
 // static int gnDecoderSeqArrCode128[128] = {0};
 // static int gnDecoderFaithArrCode128[128] = {0};
 
@@ -897,15 +911,26 @@ int DcdrFindCodeSt_code128( int * decode_arr, int arr_count )
 			continue;
 		}
 
+		//////////////////////////////////////////////////////////////////////////
 		// ¼ÆËã¾àÀë
-		mask = gnDecoderModuleCode128[106];
-		nVar = abs(f[0]-((mask>>24&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
-			+ abs(f[1]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
-			+ abs(f[2]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+// 		mask = gnDecoderModuleCode128[106];
+// 		nVar = abs(f[0]-((mask>>24&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+// 			+ abs(f[1]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+// 			+ abs(f[2]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+// 			+ abs(f[3]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+// 			+ abs(f[4]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+// 			+ abs(f[5]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+// 			+ abs(f[6]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+
+		//////////////////////////////////////////////////////////////////////////
+		// ¼ÆËã¾àÀë
+		nVar = abs(f[6]-((mask>>24&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+			+ abs(f[5]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[4]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
 			+ abs(f[3]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
-			+ abs(f[4]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
-			+ abs(f[5]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
-			+ abs(f[6]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+			+ abs(f[2]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+			+ abs(f[1]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+			+ abs(f[0]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
 
 		if( nVar < nMin ) {
 			pStopArr[nStopCnt++] = arr_count - 1 - i;
@@ -1518,3 +1543,6 @@ int DcdrWidthRegular_code128(int * decode_arr, int arr_count)
 
 	return 1;
 }
+
+
+

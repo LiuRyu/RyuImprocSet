@@ -1160,7 +1160,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
-#if 1
+	if(16 > slice_height)
+		goto nExit;
 	printf("********basic fMin = %3.2f\n", fMin);
 	int dbgOffsetYDem_basic = height - 4;
 	for(int jjj = 0; jjj < decodeCnt_basic; jjj++) {
@@ -1193,12 +1194,6 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 	printf("\n");
 	cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_strict[decodeCnt_strict]+0.5), dbgOffsetYDem_strict),
 		cvPoint(int(fDemarcCoord_strict[decodeCnt_strict]+0.5), dbgOffsetYDem_strict+12), CV_RGB(255, 0, 0));
-#endif // 0 or 1
-#endif _DEBUG_DECODE
-#endif _DEBUG_
-
-#ifdef _DEBUG_
-#ifdef _DEBUG_DECODE
 	cvNamedWindow("Decode");
 	cvShowImage("Decode", iplBinaImg3C);
 	cvWaitKey();
