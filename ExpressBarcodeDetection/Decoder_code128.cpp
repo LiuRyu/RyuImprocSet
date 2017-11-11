@@ -13,7 +13,6 @@
 #endif
 #endif
 
-#define CODE128_MAX_DECODEARR_COUNT		(128)
 #define CODE128_MIN_DECODEARR_COUNT		(25)
 #define CODE128_MIN_SEQARR_COUNT		(3)
 //////////////////////////////////////////////////////////////////////////
@@ -55,8 +54,6 @@ RyuPoint * gptDecoderStArr_code128 = 0;
 
 int CodeStartStopMatch_code128( int * decode_arr, int arr_count,  int * start_idx, int * stop_idx );
 
-int DcdrFindCodeSt_code128(int * decode_arr, int arr_count);
-
 int CodeModelMatch_code128(int * decode_arr, int arr_count, int * seq_arr, int * faith_arr);
 
 int CheckDigitVerify_code128(int * seq_arr, int * faith_arr, int seq_cnt);
@@ -64,12 +61,25 @@ int CheckDigitVerify_code128(int * seq_arr, int * faith_arr, int seq_cnt);
 int Transcode_code128( int * seq_arr, int seq_cnt, char * strResult );
 
 
+int DcdrFindCodeSt_code128(int * decode_arr, int arr_count);
+
+int DcdrCheckStValid_code128(int start_idx, int stop_idx);
+
+int DcdrModelMatch_code128(int * decode_arr, int arr_count, int * seq_arr, int * seq_cnt, int * eff_cnt);
+
+int DcdrCheckVerify_code128(int * seq_arr, int seq_cnt);
+
+int DcdrTranscode_code128(int * seq_arr, int seq_cnt, char * strResult);
+
+int DcdrWidthRegular_code128(int * decode_arr, int arr_count);
+
+
 int allocVariableMemStorage_code128(unsigned char * heapPtr, int heapSize)
 {
 	int offset = 0;
 
 	gnDecoderProcArr_code128 = (int *)(heapPtr + offset);
-	offset += maxArrLength_code128 * sizeof(int);
+	offset += 6 * maxArrLength_code128 * sizeof(int);
 	if(offset > heapSize)
 		return 0;
 
@@ -216,39 +226,35 @@ nExit:
 }
 
 
-int Decoder_code128(int * decode_arr, int arr_count, 
-				char * code_result, int * code_digit, int * code_module, 
-				int * code_direct, int * code_idxL, int * code_idxR)
+int Decoder_code128(int * decode_arr, int arr_count, DecodeResultNode * result)
 {
 	int nRet = 0, status = 0;
 	int i = 0, j = 0;
 
+	char strResult[CODE_RESULT_ARR_LENGTH] = {0};
+
 	int nDigitCnt = 0, nModuleCnt = 0, nDirection = 0, nDirection0 = 0;
 	int nStartIdx = 0, nStopIdx = 0;
-	int nArrCount = 0, nSeqCount = 0;
+	int nArrCount = 0, nSeqCount = 0, nEffSeqCount = 0;
 	int nIsRcg = 0;
 
 	int nStCnt = 0;
 	RyuPoint * pStpArr = gptDecoderStArr_code128;
 
 	int * pProcArr = gnDecoderProcArr_code128;
+	int * pSeqArr = gnDecoderSeqArrCode128;
 
-	if(!decode_arr || !code_result || !code_digit || !code_module
-		|| !code_direct || !code_idxL || !code_idxR) {
+	if(!decode_arr || !result) {
 #ifdef	_PRINT_PROMPT
-			printf( "ERROR! Invalid input of RecgCode128, decode_arr=0x%x, code_result=0x%x\
-					, code_digit=0x%x, code_module=0x%x, code_direct=0x%x, code_idxL=0x%x\
-					, code_idxR=0x%x\n", decode_arr, code_result, code_digit, code_module, \
-					code_direct, code_idxL, code_idxR );
+			printf( "ERROR! Invalid input of RecgCode128, decode_arr = 0x%x, result=0x%x\n", 
+				decode_arr, result);
 #endif
 			nRet = RYU_DECODERR_NULLPTR;
 			goto nExit;
 	}
 
 	// 重置初始状态
-	code_result[0] = 0;
-	*code_digit = *code_module = *code_direct = *code_idxL = 0;
-	*code_idxR = arr_count - 1;
+	memset(result, 0, sizeof(DecodeResultNode));
 
 	if( arr_count < CODE128_MIN_DECODEARR_COUNT ) {
 #ifdef	_DEBUG_
@@ -294,18 +300,18 @@ int Decoder_code128(int * decode_arr, int arr_count,
 
 		nDirection0 = i ? nDirection0 : nDirection;
 
-		nSeqCount = CodeModelMatch_code128(pProcArr, nArrCount, 
-			gnDecoderSeqArrCode128, gnDecoderFaithArrCode128);
-		if( nSeqCount < CODE128_MIN_SEQARR_COUNT ) {
+		status = DcdrModelMatch_code128(pProcArr, nArrCount, 
+			pSeqArr, &nSeqCount, &nEffSeqCount);
+		if(1 != status) {
 #ifdef	_DEBUG_
 #ifdef  _DEBUG_DECODER_CODE128
-			printf("[Decoder_code128]- Cannot match code model, bad nSeqCount: %d\n", nSeqCount);
+			printf("[Decoder_code128]- Cannot match code model, bad return: %d\n", status);
 #endif
 #endif
 			continue;
 		}
 
-		status = CheckDigitVerify_code128(gnDecoderSeqArrCode128, gnDecoderFaithArrCode128, nSeqCount);
+		status = DcdrCheckVerify_code128(pSeqArr, nSeqCount);
 		if(1 != status ) {
 #ifdef	_DEBUG_
 #ifdef  _DEBUG_DECODER_CODE128
@@ -315,31 +321,41 @@ int Decoder_code128(int * decode_arr, int arr_count,
 			continue;
 		}
 
-		status = Transcode_code128(gnDecoderSeqArrCode128, nSeqCount, code_result);
+		status = DcdrTranscode_code128(pSeqArr, nSeqCount, strResult);
 		if( status <= 0 ) {
 #ifdef	_DEBUG_
 #ifdef  _DEBUG_DECODER_CODE128
 			printf("[Decoder_code128]- Cannot transcode, bad return: %d\n", status);
 #endif
 #endif
-			code_result[0] = 0;
+			strResult[0] = 0;
 			continue;
 		}
 
 		nStartIdx = pStpArr[i].x;
 		nStopIdx = pStpArr[i].y;
 		nDigitCnt = status;
-		nModuleCnt = nSeqCount * 11 + 13;
+		nModuleCnt = nSeqCount * 11 + 2;
 		nIsRcg = 1;
 		break;
 	}
 
-	*code_digit = nDigitCnt;
-	*code_module = nModuleCnt;
-	*code_direct = nIsRcg ? nDirection : nDirection0;
-	*code_idxL = (nDirection > 0) ? nStartIdx : nStopIdx;
-	*code_idxR = (nDirection > 0) ? nStopIdx : nStartIdx;
-	nRet = nIsRcg;
+	if(1 == nIsRcg) {
+		result->flag = 1;
+		result->code_type = 0x1;
+		result->rslt_digit = nDigitCnt;
+		result->code_module = nModuleCnt;
+		result->code_unit = nSeqCount;
+		result->code_unit_r = nEffSeqCount;
+		result->code_direct = nDirection;
+		result->left_idx = (nDirection > 0) ? nStartIdx : nStopIdx;
+		result->right_idx = (nDirection > 0) ? nStopIdx : nStartIdx;
+		memcpy(result->strCodeData, strResult, CODE_RESULT_ARR_LENGTH * sizeof(char));
+		nRet = 1;
+	} else {
+		result->code_direct = nDirection0;
+		nRet = 0;
+	}
 
 nExit:
 	return nRet;
@@ -677,8 +693,9 @@ nExit:
 int DcdrCheckStValid_code128(int start_idx, int stop_idx)
 {
 	int nCnt = stop_idx - start_idx + 1;
-	if( nCnt > CODE128_MAX_DECODEARR_COUNT
-		|| nCnt < CODE128_MIN_DECODEARR_COUNT || 0 != (nCnt-1) % 6)
+	if( nCnt > 6 * maxArrLength_code128
+		|| nCnt < CODE128_MIN_DECODEARR_COUNT 
+		|| 0 != (nCnt-1) % 6)
 		return 0;
 	else
 		return 1;
@@ -933,8 +950,10 @@ int DcdrFindCodeSt_code128( int * decode_arr, int arr_count )
 		}
 	}
 
+	nRet = nStartStopCnt;
+
 nExit:
-	return nStartStopCnt;
+	return nRet;
 }
 
 
@@ -1067,6 +1086,169 @@ nExit:
 	return nRet;
 }
 
+
+int DcdrModelMatch_code128(int * decode_arr, int arr_count, int * seq_arr, int * seq_cnt, int * eff_cnt)
+{
+	int nRet = 0;
+	int i = 0, j = 0, n = 0;
+
+	int nSeqCnt = 0, nEffCnt = 0;
+
+	int * pCodeCol = decode_arr;
+
+	int s = 0, f[8] = {0}, r[8] = {0};
+	int mask = 0, loop = arr_count / 6 - 1;
+
+	int nVar = 0, nMin = 0;
+	int nMinIdx = 0;
+
+	const int half_fixed = 1 << (FLOAT2FIXED_SHIFT_DIGIT - 1);
+
+	for( i = 0; i < loop; i++ ) {
+		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("Cannot match code128, unexpected value of pCodeCol[0] in CodeModelMatch_code128, \
+				   pCodeCol[0]=%d (should be <0)\n", pCodeCol[0]);
+#endif
+#endif
+			nRet = -1;
+			goto nExit;
+		}
+		s = -pCodeCol[0] + pCodeCol[1] - pCodeCol[2] + pCodeCol[3] - pCodeCol[4] + pCodeCol[5];
+		if( 0 >= s ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("Cannot match code128, unexpected value of s in CodeModelMatch_code128, \
+				   s=%d (should be >0)\n", s);
+#endif
+#endif
+			nRet = -1;
+			goto nExit;
+		}
+
+		mask = 0;
+		for( j = 0; j < 6; j++ ) {
+			f[j] = (abs(pCodeCol[j]) << FLOAT2FIXED_SHIFT_DIGIT) * 11 / s;
+			r[j] = (f[j] + half_fixed) >> FLOAT2FIXED_SHIFT_DIGIT;
+			mask |= (r[j] << (20-4*j));
+		}
+		// 直接对比
+		for( n = 0; n < 106; n++ ) {
+			if( mask == gnDecoderModuleCode128[n] )
+				break;
+		}
+		if( n < 106) {
+			seq_arr[i] = n;
+			nSeqCnt++;
+			nEffCnt++;
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("Match code128 directly in CodeModelMatch_code128, seq=%d\n", i+1);
+			printf("s:%5d  %5d  %5d  %5d  %5d  %5d\n",\
+				pCodeCol[0], pCodeCol[1], pCodeCol[2], pCodeCol[3], pCodeCol[4], pCodeCol[5]);
+			printf("f:%.3f  %.3f  %.3f  %.3f  %.3f  %.3f\n",\
+				-pCodeCol[0]*11.0/s, pCodeCol[1]*11.0/s, -pCodeCol[2]*11.0/s, \
+				pCodeCol[3]*11.0/s, -pCodeCol[4]*11.0/s, pCodeCol[5]*11.0/s);
+			printf("r:%5d %5d %5d %5d %5d %5d\n", r[0], r[1], r[2], r[3], r[4], r[5]);
+
+			printf("Match module=%x\n", gnDecoderModuleCode128[n]);
+#endif
+#endif
+		} else {
+			// 距离最小
+			nMin = 0x7fffffff;
+			for( n = 0; n < 106; n++ ) {
+				mask = gnDecoderModuleCode128[n];
+				nVar = abs(f[0]-((mask>>20&0xf)<<FLOAT2FIXED_SHIFT_DIGIT))
+					+ abs(f[1]-((mask>>16&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+					+ abs(f[2]-((mask>>12&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+					+ abs(f[3]-((mask>>8&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+					+ abs(f[4]-((mask>>4&0xf)<<FLOAT2FIXED_SHIFT_DIGIT)) 
+					+ abs(f[5]-((mask&0xf)<<FLOAT2FIXED_SHIFT_DIGIT));
+				if(nVar < nMin) {
+					nMin = nVar;
+					nMinIdx = n;
+				}
+			}
+			seq_arr[i] = nMinIdx;
+			nSeqCnt++;
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+			printf("Cannot match code128 directly in CodeModelMatch_code128, seq=%d\n", i+1);
+			printf("s:%5d  %5d  %5d  %5d  %5d  %5d\n",\
+				pCodeCol[0], pCodeCol[1], pCodeCol[2], pCodeCol[3], pCodeCol[4], pCodeCol[5]);
+			printf("f:%.3f  %.3f  %.3f  %.3f  %.3f  %.3f\n",\
+				-pCodeCol[0]*11.0/s, pCodeCol[1]*11.0/s, -pCodeCol[2]*11.0/s, \
+				pCodeCol[3]*11.0/s, -pCodeCol[4]*11.0/s, pCodeCol[5]*11.0/s);
+			printf("r:%5d %5d %5d %5d %5d %5d\n", r[0], r[1], r[2], r[3], r[4], r[5]);
+
+			printf("距离:nMin=%d, nMinCnt=%d, nMinIdx=%d, module=%x\n", nMin, nMinCnt, nMinIdx[0], \
+				gnDecoderModuleCode128[nMinIdx[0]]);
+#endif
+#endif
+		}
+		pCodeCol += 6;
+	}
+
+	// 结束位验证
+	if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf("Cannot match code128, unexpected value of pCodeCol[0] in CodeModelMatch_code128, \
+			   pCodeCol[0]=%d (should be <0)\n", pCodeCol[0]);
+#endif
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+	s = -pCodeCol[0] + pCodeCol[1] - pCodeCol[2] + pCodeCol[3] - pCodeCol[4] + pCodeCol[5] - pCodeCol[6];
+	if( 0 >= s ) {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf("Cannot match code128, unexpected value of s in CodeModelMatch_code128, \
+			   s=%d (should be >0)\n", s);
+#endif
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+
+	mask = 0;
+	for( j = 0; j < 7; j++ ) {
+		f[j] = (abs(pCodeCol[j]) << FLOAT2FIXED_SHIFT_DIGIT) * 13 / s;
+		r[j] = (f[j] + half_fixed) >> FLOAT2FIXED_SHIFT_DIGIT;
+		mask |= (r[j] << (24-4*j));
+	}
+	if(mask == gnDecoderModuleCode128[106]) {
+		nEffCnt++;
+	}
+	seq_arr[nSeqCnt++] = 106;
+
+	if(nSeqCnt == loop + 1) {
+		*seq_cnt = nSeqCnt;
+		*eff_cnt = nEffCnt;
+		nRet = 1;
+	} else {
+		*seq_cnt = 0;
+		*eff_cnt = 0;
+		nRet = 0;
+	}
+
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+	printf("Decode seq_arr: ");
+	for(i = 0; i < loop; i++)
+		printf("%5d",seq_arr[i]);
+	printf("\n");
+#endif
+#endif
+
+nExit:
+	return nRet;
+}
+
+
 // 校验位检验
 int CheckDigitVerify_code128(int * seq_arr, int * faith_arr, int seq_cnt)
 {
@@ -1166,6 +1348,27 @@ nExit:
 }
 
 
+// 校验位检验
+int DcdrCheckVerify_code128(int * seq_arr, int seq_cnt)
+{
+	int nRet = 0;
+	int i = 0, sum = 0;
+
+	sum = seq_arr[0];
+	for( i = 1; i < seq_cnt - 2; i++ ) {
+		sum += i * seq_arr[i];
+	}
+	i = sum % 103;
+
+	if( i == seq_arr[seq_cnt-2] ) {
+		nRet = 1;
+	}
+
+nExit:
+	return nRet;
+}
+
+
 int Transcode_code128( int * seq_arr, int seq_cnt, char * strResult )
 {
 	int i = 0, nRet = 0;
@@ -1231,3 +1434,87 @@ nExit:
 	return nRet;
 }
 
+int DcdrTranscode_code128(int * seq_arr, int seq_cnt, char * strResult)
+{
+	int i = 0, nRet = 0;
+	int codeType = 0;
+	int nDigit = 0;
+
+	if( 103 == seq_arr[0] )
+		codeType = 1;
+	else if( 104 == seq_arr[0] )
+		codeType = 2;
+	else if( 105 == seq_arr[0] )
+		codeType = 3;
+	else {
+#ifdef	_DEBUG_
+#ifdef  _DEBUG_DECODER_CODE128
+		printf( "Unexpected seq_arr[0]:%d", seq_arr[0] );
+#endif
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+
+	for (i = 1; i < seq_cnt - 2; i++) {
+		if (codeType == 1) {
+			if(seq_arr[i] < 99)  {
+				strResult[nDigit++] = seq_arr[i] + 32;
+			}
+			else if(seq_arr[i] == 99) codeType=3;
+			else if(seq_arr[i] == 100) codeType=2;
+			continue;
+		}
+
+		if (codeType == 2) {
+			if(seq_arr[i] < 99) {
+				strResult[nDigit++] = seq_arr[i] + 32;
+			}
+			else if(seq_arr[i] == 99) codeType=3;
+			else if(seq_arr[i] == 101) codeType=1;
+			continue;
+		}
+
+		if(codeType == 3) {
+			if(seq_arr[i] < 10) {
+				strResult[nDigit++] = 48;
+				strResult[nDigit++] = seq_arr[i] + 48;
+
+			}
+			else if(seq_arr[i]<100) {
+				strResult[nDigit++] =(seq_arr[i] - seq_arr[i] % 10) / 10 + 48;
+				strResult[nDigit++] = seq_arr[i] % 10 + 48;
+			}
+			else if(seq_arr[i]==100) codeType = 2;
+			else if(seq_arr[i]==101) codeType = 1;
+			continue;
+		}
+	}
+
+	seq_arr[nDigit] = 0;
+
+	nRet = nDigit;
+
+nExit:
+	return nRet;
+}
+
+
+int DcdrWidthRegular_code128(int * decode_arr, int arr_count)
+{
+	int i = 0;
+
+	int sum_p = 0, sum_n = 0;
+
+	for(i = 0; i < arr_count; i++) {
+		if(decode_arr[i] > 0) {
+			sum_p += decode_arr[i];
+		} else {
+			sum_n += decode_arr[i];
+		}
+	}
+
+	printf("sum_p = %d, sum_n = %d\n", sum_p, sum_n);
+
+	return 1;
+}

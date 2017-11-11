@@ -38,7 +38,7 @@
 #define LOCATE_SCAN_WINDOW_SIZE		(32)
 #define OCR_INTERCEPT_EXTEND		(36) 
 
-#define DECODE_AVGMIN_MODULEW_THRESHOLD	(1.5)
+#define DECODE_AVGMIN_MODULEW_THRESHOLD	(1.8)
 #define DECODE_IM_WIDTH_THRESHOLD		(400)
 
 using namespace std;
@@ -312,30 +312,13 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 
 			ucDecodeImage = getBarcodeImgProcOutput();
 
-			sliceCnt = 0;
-			sliceH = rtt_height;
-			while(sliceH >= 24) {
-				sliceHs[sliceCnt++] = sliceH;
-				sliceH = rtt_height / (sliceCnt + 1);
-			}
-			sliceHs[sliceCnt++] = 16;
-			sliceHs[sliceCnt++] = 12;
-			sliceHs[sliceCnt++] = 8;
-			sliceHs[sliceCnt++] = 4;
-			accModuleW = 0.0;
-			for(k = 0; k < sliceCnt; k++) {
-				memset(code_result, 0, sizeof(char) * CODE_RESULT_ARR_LENGTH);
-				codeType = codeDigit = codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
-				minModuleW = 0.0;
-				nDecodeFlag = BarcodeDecoding_run(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, sliceHs[k],
-					code_result, &codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR, &minModuleW);
-				accModuleW = accModuleW + minModuleW;
-				if(1 == nDecodeFlag)
-					break;
-			}
+			memset(code_result, 0, sizeof(char) * CODE_RESULT_ARR_LENGTH);
+			codeType = codeDigit = codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
+			minModuleW = 2.0;
+			nDecodeFlag = BarcodeDecoding_run(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, code_result, 
+				&codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR, &minModuleW);
 
-			accModuleW = accModuleW / sliceCnt;
-			printf("accModuleW = %3.2f\n", accModuleW);
+			printf("minModuleW=%3.4f\n", minModuleW);
 
 			if(1 == nDecodeFlag) {
 				codeOffsetL /= (j+1);
@@ -343,7 +326,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 				break;
 			}
 			else if(1 != nDecodeFlag 
-				&& accModuleW < DECODE_AVGMIN_MODULEW_THRESHOLD 
+				&& minModuleW < DECODE_AVGMIN_MODULEW_THRESHOLD 
 				&& rtt_width < DECODE_IM_WIDTH_THRESHOLD) {
 				continue;
 			} else {
