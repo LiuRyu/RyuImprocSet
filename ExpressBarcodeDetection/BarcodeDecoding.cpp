@@ -991,10 +991,10 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 			// 大值未过阈值
 			else if(minv < lumL + diff && maxv < lumH - diff) {
 				if(demarc_arr[j].type > 0) {
-					fTune = (demarc_arr[j].idxex_e - demarc_arr[j].gravity) / 2;
+					fTune = (demarc_arr[j].idxex_e - demarc_arr[j].gravity) / 3;
 					demarc_arr[j].gravity = demarc_arr[j].gravity + fTune;
 				} else {
-					fTune = (demarc_arr[j].gravity - demarc_arr[j].idxex_b) / 2;
+					fTune = (demarc_arr[j].gravity - demarc_arr[j].idxex_b) / 3;
 					demarc_arr[j].gravity = demarc_arr[j].gravity - fTune;
 				}
 				// 灰度阈值学习

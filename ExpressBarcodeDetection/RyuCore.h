@@ -14,7 +14,7 @@
 /************************************************************************/
 //#define _OCR				// 字符识别模块开关
 //#define _RECOG_CHAR_		// 字符识别模块开关
-//#define _MULTI_PKG			// 多包裹检测模块开关
+#define _MULTI_PKG			// 多包裹检测模块开关
 //#define _CUT_CHAR_			// 切割数字部分图像(可识别条码)
 //////////////////////////////////////////////////////////////////////////
 
@@ -42,14 +42,14 @@
 //#define _DEBUG_LOCATE		// 定位模块
 //#define _DEBUG_SEGMENT	// 切割模块
 //#define _DEBUG_ROTATE		// 旋转模块
-//#define _DEBUG_IMGPROC	// 图像处理模块
+//#define _DEBUG_IMGPROC		// 图像处理模块
 //#define _DEBUG_DECODE		// 解码模块
 //#define _DEBUG_DECODER_CODE128
 //#define _DEBUG_DECODER_CODE39
 //#define _DEBUG_DECODER_CODE93
 //#define _DEBUG_DECODER_I2OF5
 //#define _DEBUG_DECODER_EAN13
-//#define _DEBUG_FLOODFILL
+#define _DEBUG_FLOODFILL
 
 //#define _DEBUG_EXBILL
 //#define _DEBUG_EXBILL_TIME
