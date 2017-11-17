@@ -384,7 +384,7 @@ int CodeStartStopMatch_code39( int * decode_arr, int arr_count,  int * start_idx
 	//////////////////////////////////////////////////////////////////////////
 	// 2.0.5.2版本优化，限制左右检索边界，减少乱码
 	//for( i = 0; i < arr_count - 9; i++ ) {
-	for( i = 0; i < 6; i++ ) {
+	for( i = 0; i < RYUMIN(10, arr_count - 9); i++ ) {
 		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
 			pCodeCol++;
 			continue;
@@ -479,7 +479,7 @@ int CodeStartStopMatch_code39( int * decode_arr, int arr_count,  int * start_idx
 	//////////////////////////////////////////////////////////////////////////
 	// 2.0.4.2版本优化，限制左右检索边界，减少乱码
 	//for(i = 0; i < arr_count - 9; i++) {
-	for(i = 0; i < 6; i++) {
+	for(i = 0; i < RYUMIN(10, arr_count - 9); i++) {
 		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
 			pCodeCol--;
 			continue;

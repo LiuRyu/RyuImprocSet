@@ -49,7 +49,7 @@
 //#define _DEBUG_DECODER_CODE93
 //#define _DEBUG_DECODER_I2OF5
 //#define _DEBUG_DECODER_EAN13
-#define _DEBUG_FLOODFILL
+//#define _DEBUG_FLOODFILL
 
 //#define _DEBUG_EXBILL
 //#define _DEBUG_EXBILL_TIME

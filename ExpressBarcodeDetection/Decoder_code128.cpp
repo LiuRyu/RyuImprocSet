@@ -739,7 +739,7 @@ int DcdrFindCodeSt_code128( int * decode_arr, int arr_count )
 	//////////////////////////////////////////////////////////////////////////
 	// 正向寻找条码起始位或反向终止符号位
 	pCodeCol = decode_arr;
-	for( i = 0; i < arr_count - 6; i++, pCodeCol++ ) {
+	for( i = 0; i < RYUMIN(10, arr_count - 6); i++, pCodeCol++ ) {
 		if( pCodeCol[0] > 0 )	// 规定从黑色开始
 			continue;
 
@@ -846,7 +846,7 @@ int DcdrFindCodeSt_code128( int * decode_arr, int arr_count )
 	//////////////////////////////////////////////////////////////////////////
 	// 反向搜索条码终止位或反向开始符号位
 	pCodeCol = decode_arr + arr_count - 1;
-	for(i = 0; i < arr_count - 6; i++, pCodeCol--) {
+	for(i = 0; i < RYUMIN(10, arr_count - 6); i++, pCodeCol--) {
 		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
 			continue;
 		}
