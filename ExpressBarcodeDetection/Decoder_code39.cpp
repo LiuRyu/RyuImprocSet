@@ -110,6 +110,20 @@ int allocVariableMemStorage_code39(unsigned char * heapPtr, int heapSize)
 	return 1;
 }
 
+void resetVariableMemStorage_code39()
+{
+	gnDecoderProcArr_code39 = 0;
+
+	gnDecoderSeqArrCode39 = 0;
+	gnDecoderFaithArrCode39 = 0;
+
+	gnDecoderStartArr_code39 = 0;
+	gnDecoderStopArr_code39 = 0;
+	gptDecoderStArr_code39 = 0;
+
+	return;
+}
+
 int RecgCode39(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
 	int * code_module, int * code_direct, int * code_idxL, int * code_idxR)
 {
@@ -636,7 +650,7 @@ int DcdrFindCodeSt_code39( int * decode_arr, int arr_count )
 	//////////////////////////////////////////////////////////////////////////
 	// 正向寻找条码起始位或反向终止符号位
 	pCodeCol = decode_arr;
-	for( i = 0; i < arr_count - 9; i++, pCodeCol++ ) {
+	for( i = 0; i <  RYUMIN(10, arr_count - 9); i++, pCodeCol++ ) {
 		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
 			continue;
 		}
@@ -712,7 +726,7 @@ int DcdrFindCodeSt_code39( int * decode_arr, int arr_count )
 	//////////////////////////////////////////////////////////////////////////
 	// 反向搜索条码终止位或反向开始符号位
 	pCodeCol = decode_arr + arr_count - 1;
-	for(i = 0; i < arr_count - 9; i++, pCodeCol--) {
+	for(i = 0; i <  RYUMIN(10, arr_count - 9); i++, pCodeCol--) {
 		if( pCodeCol[0] > 0 ) {	// 规定从黑色开始
 			continue;
 		}

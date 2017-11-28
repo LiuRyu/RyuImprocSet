@@ -30,7 +30,7 @@ RyuImage * giCodeLoc_binary = 0;
 
 #ifdef _METHOD_GRADIENT_FEATURE_
 RyuImage * giGradient = 0;
-RyuImage * giGradorie = 0;
+RyuImage * giIntegral = 0;
 #endif _METHOD_GRADIENT_FEATURE_
 
 int CodeLocating_process(RyuImage * im)
@@ -116,84 +116,16 @@ int CodeLocating_process(RyuImage * im)
 #ifdef _METHOD_GRADIENT_FEATURE_
 
 	int gradThre = 10;
-	RyuImage * iGrad = 0, * iOrie = 0;
-	iGrad = ryuCreateImageHeader(ryuSize(im->width>>2, im->height>>2), RYU_DEPTH_8C, 1);
+	RyuImage * iGrad = 0, * iInteg = 0;
+	iGrad = ryuCreateImageHeader(ryuSize(im->width/3, im->height/3), RYU_DEPTH_8C, 1);
 	iGrad->imageData = giGradient->imageData;
-	iOrie = ryuCreateImageHeader(ryuSize(im->width>>2, im->height>>2), RYU_DEPTH_8C, 1);
-	iOrie->imageData = giGradorie->imageData;
+	iInteg = ryuCreateImageHeader(ryuSize(im->width/3, im->height/3), RYU_DEPTH_32N, 1);
+	iInteg->imageData = giIntegral->imageData;
 
 	ryuTimerStart();
-	CodeLocFnc_GradientFeatureSample4(im, &gradThre, iGrad, iOrie);
+	GradientFeature_w3s3(im, iGrad, &gradThre);
 	ryuTimerStop();
 	ryuTimerPrint();
-
-#ifdef _DEBUG_CODE_LOCATE_
-	printf("grad_thre = %d\n", gradThre);
-	ryuShowImage("gradient", iGrad);
-
-	int dbgColorPad[3*180];
-	for(int iid = 0; iid < 180; iid++) {
-		if(iid < 30) {
-			dbgColorPad[3*iid] = 255;
-			dbgColorPad[3*iid+1] = 75 + 6 * iid;
-			dbgColorPad[3*iid+2] = 75;
-		} else if(iid < 60) {
-			dbgColorPad[3*iid] = 255 - 6 * (iid-30);
-			dbgColorPad[3*iid+1] = 255;
-			dbgColorPad[3*iid+2] = 75;
-		} else if(iid < 90) {
-			dbgColorPad[3*iid] = 75;
-			dbgColorPad[3*iid+1] = 255;
-			dbgColorPad[3*iid+2] = 75 + 6 * (iid-60);
-		} else if(iid < 120) {
-			dbgColorPad[3*iid] = 75;
-			dbgColorPad[3*iid+1] = 255 - 6 * (iid-90);
-			dbgColorPad[3*iid+2] = 255;
-		} else if(iid < 150) {
-			dbgColorPad[3*iid] = 75 + 6 * (iid-120);
-			dbgColorPad[3*iid+1] = 75;
-			dbgColorPad[3*iid+2] = 255;
-		} else if(iid < 180) {
-			dbgColorPad[3*iid] = 255;
-			dbgColorPad[3*iid+1] = 75;
-			dbgColorPad[3*iid+2] = 255 - 6 * (iid-150);
-		}
-	}
-	RyuImage * dbgOrie = ryuCreateImage(ryuGetSize(iOrie), 8, 3);
-	unsigned char * pDbgOrie = 0, * pDbgOrieL = dbgOrie->imageData;
-	unsigned char * pOrie = 0, * pOrieL = iOrie->imageData;
-	unsigned char * pGrad = 0, * pGradL = iGrad->imageData;
-	for(int iid = 0; iid < iOrie->height; iid++) {
-		pGrad = pGradL;
-		pOrie = pOrieL;
-		pDbgOrie = pDbgOrieL;
-		for(int jjd = 0; jjd < iOrie->width; jjd++) {
-			if(0 == pGrad[jjd]) {
-				pDbgOrie[3*jjd] = pDbgOrie[3*jjd+1] = pDbgOrie[3*jjd+2] = 0;
-			} else {
-				pDbgOrie[3*jjd] = dbgColorPad[3*pOrie[jjd]+2];
-				pDbgOrie[3*jjd+1] = dbgColorPad[3*pOrie[jjd]+1];
-				pDbgOrie[3*jjd+2] = dbgColorPad[3*pOrie[jjd]];
-			}
-		}
-		pGradL += iGrad->widthStep;
-		pOrieL += iOrie->widthStep;
-		pDbgOrieL += dbgOrie->widthStep;
-	}
-	ryuShowImage("gradorie", dbgOrie);
-	ryuReleaseImage(&dbgOrie);
-#endif _DEBUG_CODE_LOCATE_
-
-	gradThre = 10;
-	ryuTimerStart();
-	CodeLocFnc_GradientExtract(im, iGrad, 0.025, &gradThre);
-	ryuTimerStop();
-	ryuTimerPrint();
-#ifdef _DEBUG_CODE_LOCATE_
-	printf("grad_thre2 = %d\n", gradThre);
-	ryuShowImage("gradient2", iGrad);
-	cvWaitKey();
-#endif _DEBUG_CODE_LOCATE_
 
 #endif _METHOD_GRADIENT_FEATURE_
 
@@ -213,8 +145,8 @@ nExit:
 #ifdef _METHOD_GRADIENT_FEATURE_
 	if(iGrad)
 		ryuReleaseImageHeader(&iGrad);
-	if(iOrie)
-		ryuReleaseImageHeader(&iOrie);
+	if(iInteg)
+		ryuReleaseImageHeader(&iInteg);
 #endif _METHOD_GRADIENT_FEATURE_
 
 	return ret_val;
@@ -248,14 +180,14 @@ int CodeLocating_init(int width, int height)
 #endif _METHOD_BINARIZE_
 
 #ifdef _METHOD_GRADIENT_FEATURE_
-	giGradient = ryuCreateImage(ryuSize(width>>2, height>>2), RYU_DEPTH_8C, 1);
+	giGradient = ryuCreateImage(ryuSize(width/3, height/3), RYU_DEPTH_8C, 1);
 	if(NULL == giGradient) {
 		ret_val = -1;
 		goto nExit;
 	}
 
-	giGradorie = ryuCreateImage(ryuSize(width>>2, height>>2), RYU_DEPTH_8C, 1);
-	if(NULL == giGradorie) {
+	giIntegral = ryuCreateImage(ryuSize(width/3, height/3), RYU_DEPTH_32N, 1);
+	if(NULL == giIntegral) {
 		ret_val = -1;
 		goto nExit;
 	}
@@ -286,9 +218,8 @@ void CodeLocating_release()
 #ifdef _METHOD_GRADIENT_FEATURE_
 	if(giGradient)
 		ryuReleaseImage(&giGradient);
-
-	if(giGradorie)
-		ryuReleaseImage(&giGradorie);
+	if(giIntegral)
+		ryuReleaseImage(&giIntegral);
 #endif _METHOD_GRADIENT_FEATURE_
 
 	return;

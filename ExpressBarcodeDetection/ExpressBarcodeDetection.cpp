@@ -49,6 +49,16 @@ unsigned char * gpucBarcodeResults = 0;
 
 int gnExprBrcdDtctInitFlag = 0;
 
+/************************************************************************/
+/* 设置参数										*/
+/************************************************************************/
+int gnCodeSymbology = 0;
+int gnRglCodeCnt = 0;
+int gnCodeDgtNum = 0;
+int gnCodeDgtNumExt = 0;
+int gnCodeValidity = 0;
+int gnCodeValidityExt = 0;
+
 
 /************************************************************************/
 /* 运行识别																*/
@@ -84,7 +94,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 	
 	// 读码
 	int sliceH = 0, nDecodeFlag = 0, sliceHs[32] = {0}, sliceCnt = 0;
-	int codeDigit = 0, codeType = 0, codeDirect = 0, codeModule = 0;
+	int codeDigit = 0, codeType = 0, codeValid = 0, codeDirect = 0, codeModule = 0;
 	char code_result[CODE_RESULT_ARR_LENGTH];
 	int codeOffsetL = 0, codeOffsetR = 0;
 	float minModuleW = 0.0, accModuleW = 0.0;
@@ -136,9 +146,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 		goto nExit;
 	}
 
-#ifdef _MULTI_PKG
 	WaybillSegm_resetCodeAreaStack();
-#endif
 
 	// 条码区域定位
 	nLocateRet = LocateBarcodeAreas(in_data, width, height, LOCATE_SCAN_WINDOW_SIZE);
@@ -239,20 +247,22 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 		goto nExit;
 	}
 
-	// 对条码区域进行排序（面积）
-	for(i = 0; i < nSegmentCnt; i++) {
-		for(j = i+1; j < nSegmentCnt; j++) {
-			nTmp1 = (pSegmentBarcode[i].max_ontcpt-pSegmentBarcode[i].min_ontcpt) 
-				* (pSegmentBarcode[i].max_intcpt-pSegmentBarcode[i].min_intcpt);
-			nTmp2 = (pSegmentBarcode[j].max_ontcpt-pSegmentBarcode[j].min_ontcpt) 
-				* (pSegmentBarcode[j].max_intcpt-pSegmentBarcode[j].min_intcpt);
-			if(nTmp1 < nTmp2) {
-				tmpSegment = pSegmentBarcode[i];
-				pSegmentBarcode[i] = pSegmentBarcode[j];
-				pSegmentBarcode[j] = tmpSegment;
-			}
-		}
-	}
+	// 对条码区域进行排序（得分-面积）
+// 	for(i = 0; i < nSegmentCnt; i++) {
+// 		for(j = i+1; j < nSegmentCnt; j++) {
+// 			nTmp1 = (pSegmentBarcode[i].max_ontcpt-pSegmentBarcode[i].min_ontcpt) 
+// 				* (pSegmentBarcode[i].max_intcpt-pSegmentBarcode[i].min_intcpt);
+// 			nTmp1 *= pSegmentBarcode[i].score;
+// 			nTmp2 = (pSegmentBarcode[j].max_ontcpt-pSegmentBarcode[j].min_ontcpt) 
+// 				* (pSegmentBarcode[j].max_intcpt-pSegmentBarcode[j].min_intcpt);
+// 			nTmp2 *= pSegmentBarcode[j].score;
+// 			if(nTmp1 < nTmp2) {
+// 				tmpSegment = pSegmentBarcode[i];
+// 				pSegmentBarcode[i] = pSegmentBarcode[j];
+// 				pSegmentBarcode[j] = tmpSegment;
+// 			}
+// 		}
+// 	}
 
 	// 依次对分割出来的条形码区域图像进行缩放、旋转和识别
 	for(i = 0; i < nSegmentCnt; i++) {
@@ -313,12 +323,13 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 			ucDecodeImage = getBarcodeImgProcOutput();
 
 			memset(code_result, 0, sizeof(char) * CODE_RESULT_ARR_LENGTH);
-			codeType = codeDigit = codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
+			codeModule = codeDirect = codeOffsetL = codeOffsetR = 0;
+			codeType = gnCodeSymbology;
+			codeDigit = gnCodeDgtNum;
+			codeValid = gnCodeValidity;
 			minModuleW = 2.0;
 			nDecodeFlag = BarcodeDecoding_run(ucBarcodeImage, (int *)ucDecodeImage, rtt_width, rtt_height, code_result, 
-				&codeType, &codeDigit, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR, &minModuleW);
-
-			printf("minModuleW=%3.4f\n", minModuleW);
+				&codeType, &codeDigit, &codeValid, &codeModule, &codeDirect, &codeOffsetL, &codeOffsetR, &minModuleW);
 
 			if(1 == nDecodeFlag) {
 				codeOffsetL /= (j+1);
@@ -441,9 +452,7 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 			memcpy(gpucBarcodeResults+code_count*sizeof(AlgorithmResult)+4, &result_node, sizeof(AlgorithmResult));
 			code_count++;
 
-#ifdef _MULTI_PKG
 			WaybillSegm_pushCodeAreaStack(pSegmentBarcode[i].corner, pSegmentBarcode[i].angle, nDecodeFlag, result_node.strCodeData);
-#endif
 
 #ifdef _WRITE_LOG
 #ifdef _LOG_TRACE
@@ -451,13 +460,14 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 #endif
 #endif
 		}
+		if(code_count >= gnRglCodeCnt && gnRglCodeCnt > 0)
+			break;
 	}
 
-	if(0 == code_count) {
-		if(30 > nLctClusMaxGrad) {
-			// 若条码特征区域梯度幅值特征较弱，则也判定为无法找到条码
-			code_count = ret_val = -2;
-			goto nExit;
+	if(0 >= code_count) {
+		status = WaybillSegment(in_data, width, height, &pkgBoundBox);
+		if(0 >= status) {
+			ret_val = code_count = -2;
 		}
 		// 若无法识别，则给出最大可能条码的位置和形状信息，以供切割算法参考
 		else if(1 == pSegmentBarcode[0].index) {
@@ -470,8 +480,9 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 			result_node.ptCodeBound4 = (pSegmentBarcode[0].corner[3].x << 16) | (pSegmentBarcode[0].corner[3].y & 0xffff);
 			memcpy(gpucBarcodeResults+4, &result_node, sizeof(AlgorithmResult));
 			code_count = ret_val = 0;
-		} else {
-			// 无法识别
+		} 
+		// 无法识别，无法给出切割区域
+		else {
 			code_count = ret_val = -1;
 		}
 	}
@@ -479,42 +490,15 @@ int algorithm_run(int lrning_flag, unsigned char * in_data, int width, int heigh
 	ret_val = code_count;
 
 nExit:
-#ifdef _MULTI_PKG
-	/************************************************************************/
-	/* 测试多包裹检测算法                                                    */
-	/************************************************************************/
-	status = WaybillSegment(in_data, width, height, &pkgBoundBox);
-	if(0 == status && 0 >= code_count) {
-		ret_val = code_count = -2;
-	}
 #ifdef	_DEBUG_
 #ifdef  _DEBUG_FLOODFILL
 	if(0 == status)			printf("********Cannot find express package!\n");
-	else if(1 == status) {
-		printf("********The frame has only 1 express package!\n");
-		pkgCentre.x = pkgBoundBox.x + pkgBoundBox.width / 2;
-		pkgCentre.y = pkgBoundBox.y + pkgBoundBox.height / 2;
-		if(0 < pkgCentre.x && 0 < pkgCentre.y) {
-			memset(&result_node, 0, sizeof(AlgorithmResult));
-			result_node.nFlag = 8;
-			result_node.ptCodeCenter = (pkgCentre.x << 16) | pkgCentre.y;
-			result_node.ptCodeBound1 = pkgBoundBox.x;
-			result_node.ptCodeBound2 = pkgBoundBox.y;
-			result_node.ptCodeBound3 = pkgBoundBox.x + pkgBoundBox.width;
-			result_node.ptCodeBound4 = pkgBoundBox.y + pkgBoundBox.height;
-			result_node.nCodeWidth = pkgBoundBox.width;
-			result_node.nCodeHeight = pkgBoundBox.height;
-			memcpy(gpucBarcodeResults+code_count*sizeof(AlgorithmResult)+4, &result_node, sizeof(AlgorithmResult));
-		}
-	}
+	else if(1 == status)	printf("********The frame has only 1 express package!\n");
 	else if(2 == status)	printf("********Warning, the frame MAY has multiple express packages!\n");
 	else if(3 == status)	printf("********Warning, the frame has multiple express packages!\n");
 	else					printf("********Error, WaybillSegment runs into some exceptions!\n");
 #endif
 #endif
-	////////////////////////////////////////////////////////////////////////*/
-#endif
-
 	first_4char[0] = code_count;
 	*results = gpucBarcodeResults;
 	return ret_val;
@@ -635,9 +619,7 @@ int algorithm_init(int max_width, int max_height, unsigned char ** results)
 	}
 #endif _RECOG_CHAR_
 
-#ifdef _MULTI_PKG
 	status = ryuInitFloodFill(ryuSize(400, 400), 1024);
-#endif
 
 	gnExprBrcdDtctInitFlag = 1;
 	ret_val = 1;
@@ -678,11 +660,95 @@ void algorithm_release()
 	Release_RecogChar();
 #endif _RECOG_CHAR_
 
-#ifdef _MULTI_PKG
 	ryuReleaseFloodFill();
-#endif
 
 	gnExprBrcdDtctInitFlag = 0;
+}
+
+
+int algorithm_setparams(AlgorithmParamSet * paramset)
+{
+	int ret_val = 0;
+
+	if(!paramset) {
+		ret_val = -10112011;
+		printf("\n--Ryu--Invalid input parameters in Algorithm Getparams operation, %d\n", ret_val);
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+		Write_Log(LOG_TYPE_INFO, "ERROR- Algorithm params setting failed[%d]. paramset=0x%x", ret_val, paramset);
+#endif
+		Write_Log(LOG_TYPE_ERROR, "ERROR- Algorithm params setting failed[%d]. paramset=0x%x", ret_val, paramset);
+#endif
+		goto nExit;
+	}
+
+	gnRglCodeCnt = paramset->nCodeCount;
+	if(gnRglCodeCnt < 0 || gnRglCodeCnt > BARCODE_RESULT_MAX_COUNT) {
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+		Write_Log(LOG_TYPE_INFO, "WARN- Invalid algorithm param: code_count=%d. Reset this param to default: 0", gnRglCodeCnt);
+#endif
+		Write_Log(LOG_TYPE_ERROR, "WARN- Invalid algorithm param: code_count=%d. Reset this param to default: 0", gnRglCodeCnt);
+#endif
+		gnRglCodeCnt = 0;	// 还原初始值
+	}
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+	Write_Log(LOG_TYPE_INFO, "SET- Algorithm param setting. code_count <== %d", gnRglCodeCnt);
+#endif
+#endif
+
+
+	gnCodeSymbology = paramset->nCodeSymbology;
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+	Write_Log(LOG_TYPE_INFO, "SET- Algorithm param setting. code_symbology <== 0x%x", gnCodeSymbology);
+#endif
+#endif
+
+	gnCodeDgtNum = paramset->nCodeDgtNum;
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+	Write_Log(LOG_TYPE_INFO, "SET- Algorithm param setting. code_digit <== 0x%x", gnCodeSymbology);
+#endif
+#endif
+
+	gnCodeDgtNumExt = paramset->nCodeDgtNumExt;
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+	Write_Log(LOG_TYPE_INFO, "SET- Algorithm param setting. code_digit <== 0x%x", gnCodeSymbology);
+#endif
+#endif
+
+	gnCodeValidity = paramset->nCodeValidity;
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+	Write_Log(LOG_TYPE_INFO, "SET- Algorithm param setting. code_validity <== 0x%x", gnCodeValidity);
+#endif
+#endif
+
+	gnCodeValidityExt = paramset->nCodeValidityExt;
+#ifdef _WRITE_LOG
+#ifdef _LOG_TRACE
+	Write_Log(LOG_TYPE_INFO, "SET- Algorithm param setting. code_validityEx <== 0x%x", gnCodeValidityExt);
+#endif
+#endif
+
+	ret_val = 1;
+
+nExit:
+	return ret_val;
+}
+
+void algorithm_resetparams()
+{
+	gnRglCodeCnt = 0;
+	gnCodeSymbology = 0;
+	gnCodeDgtNum = 0;
+	gnCodeDgtNumExt = 0;
+	gnCodeValidity = 0;
+	gnCodeValidityExt = 0;
+	return;
 }
 
 

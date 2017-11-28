@@ -124,7 +124,8 @@ int RecgCodeI2of5(int * decode_arr, int arr_count, char * code_result, int * cod
 #endif
 		nRet = 0;
 		goto nExit;
-	}*/
+	}
+	*/
 
 	status = Transcode_I2of5( gnDecoderSeqArrI2of5, nSeqCount, code_result );
 	if( status <= 0 ) {

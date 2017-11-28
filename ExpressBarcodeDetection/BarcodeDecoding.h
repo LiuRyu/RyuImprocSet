@@ -57,7 +57,7 @@ int DecodeBarcode( unsigned char * bina, int width, int height, int sliceH,
 
 // v2.6版本开始使用的解码算法
 int BarcodeDecoding_run( unsigned char * im, int * integr, int width, int height, 
-						char * code_result, int * code_type, int * char_num, int * module_num, 
+						char * code_result, int * code_type, int * char_num, int * char_valid, int * module_num, 
 						int * code_direct, int * leftOffset, int * rightOffset, float * minModule);
 
 // int BarcodeDecoding_Integrogram( unsigned char * im, int * integr, int width, int height, int slice_height, 
@@ -75,6 +75,8 @@ void BarcodeDecoding_release();
 /************************************************************************/
 int allocVariableMemStorage_code128(unsigned char * heapPtr, int heapSize);
 
+void resetVariableMemStorage_code128();
+
 int RecgCode128(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
 				int * code_module, int * code_direct, int * code_idxL, int * code_idxR);
 
@@ -85,6 +87,8 @@ int Decoder_code128(int * decode_arr, int arr_count, DecodeResultNode * result);
 /************************************************************************/
 int allocVariableMemStorage_code39(unsigned char * heapPtr, int heapSize);
 
+void resetVariableMemStorage_code39();
+
 int RecgCode39(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
 			   int * code_module, int * code_direct, int * code_idxL, int * code_idxR);
 
@@ -94,6 +98,8 @@ int Decoder_code39(int * decode_arr, int arr_count, DecodeResultNode * result);
 /* Code93解码模块                                                       */
 /************************************************************************/
 int allocVariableMemStorage_code93(unsigned char * heapPtr, int heapSize);
+
+void resetVariableMemStorage_code93();
 
 int RecgCode93(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
 			   int * code_module, int * code_direct, int * code_idxL, int * code_idxR);

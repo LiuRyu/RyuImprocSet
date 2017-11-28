@@ -87,5 +87,15 @@ GENERALUTILITIES_API void ryuTimerPrint(int seq RYU_DEFAULT(TIMER_SEQ_0));
 GENERALUTILITIES_API void ryuThousandType(long val, char (&Dest)[32U]);
 
 
+/****************************************************************************************\
+*									XML operations								         *
+\****************************************************************************************/
+#define XML_PARSE_SUCCESS	(1)
+#define XML_PARSE_FAILED	(-1)
+
+GENERALUTILITIES_API int parseXmlNodeValue(const char * docname, const char * elename, char * content);
+
+GENERALUTILITIES_API int reviseXmlNodeValue(const char * docname, const char * elename, const char * content);
+
 #endif  __RYU_GENERAL_UTILITIES_H__
 

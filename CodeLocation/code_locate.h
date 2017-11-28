@@ -27,11 +27,20 @@ CODELOCATION_API void CodeLocating_release();
 /****************************************************************************************\
 *									Gradient feature								     *
 \****************************************************************************************/
-int CodeLocFnc_GradientFeatureSample4(RyuImage * im, int * grad_thre,
+CODELOCATION_API int CodeLocFnc_GradientFeatureSample4(RyuImage * im, int * grad_thre,
 									  RyuImage * gradient, RyuImage * gradorie);
 
-int CodeLocFnc_GradientExtract(RyuImage * im, RyuImage * gradient, 
+CODELOCATION_API int CodeLocFnc_GradientExtract(RyuImage * im, RyuImage * gradient, 
 							   float extract_ratio RYU_DEFAULT(0.025), int * grad_thre RYU_DEFAULT(0));
+
+CODELOCATION_API int GradientFeature_w3s3(RyuImage * im, RyuImage * gradient, int * grad_thre, 
+						 float grad_thre_ratio RYU_DEFAULT(0.1));
+
+CODELOCATION_API int GetGradientFeatureIntegral(RyuImage * gradient, int grad_thre, RyuImage * integral);
+
+CODELOCATION_API int FoldGradientFeatureInSlideWindow(RyuImage * integral, RyuImage * feature_map,
+							  RyuSize sw_size RYU_DEFAULT(ryuSize(16, 16)), 
+							  RyuSize sw_step RYU_DEFAULT(ryuSize(16, 16)));
 
 
 #endif  __CODE_LOCATION_H__

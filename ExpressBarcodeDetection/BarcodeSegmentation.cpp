@@ -1235,13 +1235,13 @@ int PressUponBarcodeIntercept( int * cast_array, int * LTRB, RyuPoint * intercep
 				ptStartstop[count].y = i - 1;
 				dist = ptStartstop[count].y - ptStartstop[count].x + 1;
 				avg_vals[count] /= dist;
-				if( ptStartstop[count].y - ptStartstop[count-1].x < fuse_dist
+				if( ptStartstop[count].x - ptStartstop[count-1].y < fuse_dist
 					&& RYUMIN(avg_vals[count], avg_vals[count-1]) 
 						> RYUMAX(avg_vals[count], avg_vals[count-1]) * fuse_ratio
 					&& count > 0 ) {	// 对比上一段进行融合/分离
+					avg_vals[count-1] = RYUMAX(avg_vals[count], avg_vals[count-1]);
 					ptStartstop[count-1].y = ptStartstop[count].y;
 					ptStartstop[count].x = ptStartstop[count].y = 0;
-					avg_vals[count-1] = RYUMAX(avg_vals[count], avg_vals[count-1]);
 					avg_vals[count] = 0;
 				} else {
 					count++;
@@ -1664,6 +1664,8 @@ int GetBarcodePureAreaFigures( RyuPoint * intercept, int * param1, int count1,
 
 			// [v2.6.1] 更改为
 			tempSegment.flag = 0;
+
+			tempSegment.score = gnSgmParallelSeqCnt;
 			//////////////////////////////////////////////////////////////////////////
 
 			barcode_area[totalCnt++] = tempSegment;

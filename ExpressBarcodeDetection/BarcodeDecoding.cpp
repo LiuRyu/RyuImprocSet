@@ -66,6 +66,8 @@ int pushDecodeResult2Candidates(DecodeResultNode result);
 
 int acquireDecodeResults(DecodeResultNode * result);
 
+int BarcodeResultCheck(DecodeResultNode result, int setDigit, int setValid);
+
 
 // v2.5前版本解码算法
 int DecodeBarcode( unsigned char * bina, int width, int height, int sliceH, 
@@ -400,7 +402,7 @@ nExit:
 
 // v2.6版本开始使用的解码算法
 int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,  
-						char * code_result, int * code_type, int * char_num, int * module_num, 
+						char * code_result, int * code_type, int * char_num, int * char_valid, int * module_num, 
 						int * code_direct, int * leftOffset, int * rightOffset, float * minModule)
 {
 	int ret_val = 0, status = 0;
@@ -421,6 +423,8 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 	int * nDecodeArr_basic = gpnDcdDecodeArr;
 	int * nDecodeArr_strict = gpnDcdDecodeArr2;
 	int * nDecodeArrProc = gpnDcdDecodeArrProc;
+
+	int setDigit = 0, setType = 0, setValid = 0;
 
 	char strResult[CODE_RESULT_ARR_LENGTH] = {0};
 	int nDigitCnt = 0, nModuleCnt = 0, nDirection = 0;
@@ -452,6 +456,10 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 			ret_val = -1;
 			goto nExit;
 	}
+
+	setType = *code_type;
+	setDigit = *char_num;
+	setValid = *char_valid;
 
 	resetDecodeResultCandidates();
 
@@ -501,81 +509,65 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 					continue;
 				}
 
-				status = 0;
-				memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-				status = Decoder_code128(gpnDcdDecodeArrProc, nColCount, &tmpResult);
-				if( 1 == status ) {
-					tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
-					tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
-					pushDecodeResult2Candidates(tmpResult);
-				} 
-
-				status = 0;
-				memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-				status = Decoder_code39(gpnDcdDecodeArrProc, nColCount, &tmpResult);
-				if( 1 == status ) {
-					tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
-					tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
-					pushDecodeResult2Candidates(tmpResult);
-				} 
-
-				status = 0;
-				memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-				status = Decoder_code93(gpnDcdDecodeArrProc, nColCount, &tmpResult);
-				if( 1 == status ) {
-					tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
-					tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
-					pushDecodeResult2Candidates(tmpResult);
-				}
-/*
-				status = 0;
-				memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-				memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-				status = RecgCodeI2of5(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
-					&nDirection, &nLeftIdx, &nRightIdx);
-				if( 1 == status ) {
-					nCodeType = 1<<3;
-					break;
+				if((setType & 0x1) || 0 == setType) {
+					status = 0;
+					memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+					status = Decoder_code128(gpnDcdDecodeArrProc, nColCount, &tmpResult);
+					if(1 == BarcodeResultCheck(tmpResult, setDigit, setValid)) {
+						tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
+						tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
+						pushDecodeResult2Candidates(tmpResult);
+					} 
 				}
 
-				status = 0;
-				memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
-				memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-				status = RecgCodeEAN13(gpnDcdDecodeArr, gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
-					&nDirection, &nLeftIdx, &nRightIdx);
-				if( 1 == status ) {
-					nCodeType = 1<<4;
-					break;
+				if((setType & 0x2) || 0 == setType) {
+					status = 0;
+					memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+					status = Decoder_code39(gpnDcdDecodeArrProc, nColCount, &tmpResult);
+					if(1 == BarcodeResultCheck(tmpResult, setDigit, setValid)) {
+						tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
+						tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
+						pushDecodeResult2Candidates(tmpResult);
+					} 
 				}
-*/
-			}
-/*
-			if( 1 == status) {
-				nLeftOffset = (int)fabs(pDemarcCoord[nLeftIdx]);
-				nRightOffset = (int)fabs(pDemarcCoord[nRightIdx+1]);
-#ifdef _DEBUG_
-#ifdef _DEBUG_DECODE
-				printf("-slice %d 找到条码！ slice_height = %d ", i, slice_height);
-				if(0 == k) {
-					printf("basic策略生成\n");
-				} else if(1 == k) {
-					printf("strict策略生成\n");
-				} else {
-					printf("出现意外的k值! ERROR*****\n");
+
+				if((setType & 0x4) || 0 == setType) {
+					status = 0;
+					memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+					status = Decoder_code93(gpnDcdDecodeArrProc, nColCount, &tmpResult);
+					if(1 == BarcodeResultCheck(tmpResult, setDigit, setValid)) {
+						tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
+						tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
+						pushDecodeResult2Candidates(tmpResult);
+					}
 				}
-#endif _DEBUG_DECODE
-#endif _DEBUG_
-				break;
+
+				/*
+				if((setType & 0x8) || 0 == setType) {
+					status = 0;
+					memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
+					memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+					status = RecgCodeI2of5(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
+						&nDirection, &nLeftIdx, &nRightIdx);
+					if( 1 == status ) {
+						nCodeType = 0x8;
+						break;
+					}
+				}
+
+				if((setType & 0x10) || 0 == setType) {
+					status = 0;
+					memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
+					memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
+					status = RecgCodeEAN13(gpnDcdDecodeArr, gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
+						&nDirection, &nLeftIdx, &nRightIdx);
+					if( 1 == status ) {
+						nCodeType = 0x10;
+						break;
+					}
+				}
+				*/
 			}
-#ifdef _DEBUG_
-#ifdef _DEBUG_DECODE
-			else {
-				printf("-slice %d 没有找到条码！\n", i);
-			}
-			cvWaitKey();
-#endif _DEBUG_DECODE
-#endif _DEBUG_
-*/
 			slice_top += (slice_height >> 1);
 			slice_bottom = slice_top + slice_height - 1;
 		}
@@ -621,8 +613,11 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 		}
 		*/
 	}
-
+#ifdef _DEBUG_
+#ifdef _DEBUG_DECODE
 	printf("条码高度 = %d, 识别总次数 = %d\n", height, sliceHs_cnt * slice_cnt);
+#endif
+#endif
 	status = acquireDecodeResults(&tmpResult);
 	if(1 == status) {
 		// 结果写入
@@ -788,6 +783,9 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 			else 
 				tmpDemarc.gravity = 0;
 			demarc_arr[demarc_cnt++] = tmpDemarc;
+
+			if(demarc_cnt >= gnDcdMaxLineSize-1)
+				break;
 
 			// 新区间初始化
 			tmpDemarc.type = type;
@@ -964,6 +962,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 				if(demarc_arr[j].type == demarc_effctv[demarc_effcnt-1].type) {
 					tmpDemarc.type = 0;
 					demarc_effctv[demarc_effcnt++] = tmpDemarc;
+					if(demarc_effcnt >= gnDcdMaxLineSize-1)
+						break;
 					// 前后有效域为不同上升/下降类型，验证是否为待定域
 				} else {
 					val = (pColumnArr[tmpDemarc.idx_b] + pColumnArr[tmpDemarc.idx_e]) / 2;
@@ -971,6 +971,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 						/*&& tmpDemarc.acc >= gradThreshold*/) {
 							tmpDemarc.type = 0;
 							demarc_effctv[demarc_effcnt++] = tmpDemarc;
+							if(demarc_effcnt >= gnDcdMaxLineSize-1)
+								break;
 					}
 				}
 			}
@@ -1014,6 +1016,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 				lumH = lumH * (1 - fLumLrningRateFast) + maxv * fLumLrningRateFast;
 			}
 			demarc_effctv[demarc_effcnt++] = demarc_arr[j];
+			if(demarc_effcnt >= gnDcdMaxLineSize-1)
+				break;
 			isActive = 0;
 		}
 		// 未过阈值的待定域
@@ -1081,12 +1085,16 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 			nDecodeArr_basic[decodeCnt_basic] = fDecodeElements_basic[decodeCnt_basic] * 100;
 			fDemarcCoord_basic[decodeCnt_basic+1] = demarc_effctv[j].gravity;
 			decodeCnt_basic++;
+			if(decodeCnt_basic >= gnDcdMaxLineSize-1)
+				break;
 
 			// strict策略
 			fDecodeElements_strict[decodeCnt_strict] = (demarc_effctv[j].type > 0) ? fVal : (0 - fVal);
 			nDecodeArr_strict[decodeCnt_strict] = fDecodeElements_strict[decodeCnt_strict] * 100;
 			fDemarcCoord_strict[decodeCnt_strict+1] = demarc_effctv[j].gravity;
 			decodeCnt_strict++;
+			if(decodeCnt_strict >= gnDcdMaxLineSize-1)
+				break;
 		} 
 		// 上一个为未知区域
 		else {
@@ -1098,13 +1106,15 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 			if(demarc_effctv[j].type == demarc_effctv[j-2].type) {
 				// basic策略，则合并或插入两个宽度
 				if(fCnt < 2) {
-					fTmp = (0 < demarc_effctv[j].type) ? fVal : (0-fVal);
-					fDecodeElements_basic[decodeCnt_basic-1] 
-					= fDecodeElements_basic[decodeCnt_basic-1] + fVal;
-					nDecodeArr_basic[decodeCnt_basic-1] = fDecodeElements_basic[decodeCnt_basic-1] * 100;
-					fDemarcCoord_basic[decodeCnt_basic] = (demarc_effctv[j].gravity * demarc_effctv[j].acc
-						+ demarc_effctv[j-2].gravity * demarc_effctv[j-2].acc)
-						/ (demarc_effctv[j].acc + demarc_effctv[j-2].acc);
+					if(decodeCnt_basic > 0) {
+						fTmp = (0 < demarc_effctv[j].type) ? fVal : (0-fVal);
+						fDecodeElements_basic[decodeCnt_basic-1] 
+						= fDecodeElements_basic[decodeCnt_basic-1] + fVal;
+						nDecodeArr_basic[decodeCnt_basic-1] = fDecodeElements_basic[decodeCnt_basic-1] * 100;
+						fDemarcCoord_basic[decodeCnt_basic] = (demarc_effctv[j].gravity * demarc_effctv[j].acc
+							+ demarc_effctv[j-2].gravity * demarc_effctv[j-2].acc)
+							/ (demarc_effctv[j].acc + demarc_effctv[j-2].acc);
+					}
 				} else {
 					fTmp = (0 > demarc_effctv[j].type) ? fVal : (0-fVal);
 					fTmp = fTmp / 2;
@@ -1116,6 +1126,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 					nDecodeArr_basic[decodeCnt_basic] = fDecodeElements_basic[decodeCnt_basic] * 100;
 					fDemarcCoord_basic[decodeCnt_basic+1] = fDemarcCoord_basic[decodeCnt_basic] + fabs(fTmp);
 					decodeCnt_basic++;
+					if(decodeCnt_basic >= gnDcdMaxLineSize-1)
+						break;
 				}
 
 				// strict策略，则插入偶数个宽度
@@ -1125,6 +1137,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 						break;
 				}
 				fVal = fVal / cnt;
+				if(decodeCnt_strict >= gnDcdMaxLineSize-cnt)
+					break;
 				for(k = 0; k < cnt; k++) {
 					fTmp = (0 > demarc_effctv[j].type) ? fVal : (0-fVal);
 					fDecodeElements_strict[decodeCnt_strict] = (0 == k % 2) ? fTmp : (0-fTmp);
@@ -1140,6 +1154,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 				nDecodeArr_basic[decodeCnt_basic] = fDecodeElements_basic[decodeCnt_basic] * 100;
 				fDemarcCoord_basic[decodeCnt_basic+1] = fDemarcCoord_basic[decodeCnt_basic] + fVal;
 				decodeCnt_basic++;
+				if(decodeCnt_basic >= gnDcdMaxLineSize-1)
+					break;
 
 				// strict策略，未知区域插入奇数个宽度
 				for(cnt = 1; cnt < 8; cnt += 2) {
@@ -1147,6 +1163,8 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 						break;
 				}
 				fVal = fVal / cnt;
+				if(decodeCnt_strict >= gnDcdMaxLineSize-cnt)
+					break;
 				for(k = 0; k < cnt; k++) {
 					fTmp = (0 < demarc_effctv[j].type) ? fVal : (0-fVal);
 					fDecodeElements_strict[decodeCnt_strict] = (0 == k % 2) ? fTmp : (0-fTmp);
@@ -1987,6 +2005,15 @@ int BarcodeDecoding_init( int max_width, int max_height )
 		goto nExit;
 	}
 
+	gpDRNCandArr = (DecodeResultNode *)malloc(gnDRNCandMaxCnt *  sizeof(DecodeResultNode));
+	if( !gpDRNCandArr ) {
+#ifdef	_PRINT_PROMPT
+		printf("ERROR! Cannot alloc memory for gpDRNCandArr in BarcodeDecoding_init\n");
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+
 	gpDcdDecoderMemSets = (unsigned char *)malloc(gnDcdDecoderMemSize *  sizeof(unsigned char));
 	if( !gpDcdDecoderMemSets ) {
 #ifdef	_PRINT_PROMPT
@@ -2018,15 +2045,6 @@ int BarcodeDecoding_init( int max_width, int max_height )
 	if(1 != status) {
 #ifdef	_PRINT_PROMPT
 		printf("ERROR! Cannot alloc memory for code93 decoder in BarcodeDecoding_init\n");
-#endif
-		nRet = -1;
-		goto nExit;
-	}
-
-	gpDRNCandArr = (DecodeResultNode *)malloc(gnDRNCandMaxCnt *  sizeof(DecodeResultNode));
-	if( !gpDRNCandArr ) {
-#ifdef	_PRINT_PROMPT
-		printf("ERROR! Cannot alloc memory for gpDRNCandArr in BarcodeDecoding_init\n");
 #endif
 		nRet = -1;
 		goto nExit;
@@ -2100,16 +2118,22 @@ void BarcodeDecoding_release()
 		gpnDcdDecodeArr2 = 0;
 	}
 
-	if(gpDcdDecoderMemSets) {
-		free(gpDcdDecoderMemSets);
-		gpDcdDecoderMemSets = 0;
-	}
-
 	if(gpDRNCandArr) {
 		free(gpDRNCandArr);
 		gpDRNCandArr = 0;
 	}
+
+	if(gpDcdDecoderMemSets) {
+		free(gpDcdDecoderMemSets);
+		gpDcdDecoderMemSets = 0;
+	}
 	
+	resetVariableMemStorage_code128();
+
+	resetVariableMemStorage_code39();
+
+	resetVariableMemStorage_code93();
+
 	gnDcdInitFlag = 0;
 }
 // 统计图像每列白色像素数
@@ -2433,7 +2457,9 @@ int acquireDecodeResults(DecodeResultNode * result)
 			}
 		}
 	}
-	
+
+#ifdef _DEBUG_
+#ifdef _DEBUG_DECODE
 	// 依次验证是否满足输出条件
 	if(0 < gnDRNCandCnt)
 		printf("+++++++++++++++++++++++++++\n");
@@ -2444,6 +2470,8 @@ int acquireDecodeResults(DecodeResultNode * result)
 	}
 	if(0 < gnDRNCandCnt)
 		printf("+++++++++++++++++++++++++++\n");
+#endif
+#endif
 
 	if(0 < gnDRNCandCnt) {
 		memcpy(result, &pCandArr[0], sizeof(DecodeResultNode));
@@ -2455,4 +2483,182 @@ int acquireDecodeResults(DecodeResultNode * result)
 	}
 
 	return ret_val;
+}
+
+
+int BarcodeDigitNumCheck(char * strCode, int cntCodeChar, int setDigit)
+{
+	int nRet = 0, i = 0;
+	int digit = 0;
+
+	if(0 == setDigit) {
+		nRet = 1;
+		goto nExit;
+	}
+
+	if(0 >= cntCodeChar || 32 < cntCodeChar) {
+		nRet = 0;
+		goto nExit;
+	}
+
+	if((1 << (cntCodeChar-1)) & setDigit)
+		nRet = 1;
+	else
+		nRet = 0;
+
+nExit:
+	return nRet;
+}
+
+int CharValidityCheck(char codeChar, int setValid)
+{
+	if(0 == setValid)	return 1;
+
+	if(0 == codeChar)	return 0;
+
+	if(codeChar >= 48 && codeChar <= 57) {
+		if(setValid & (1<<0))	return 1;
+		else					return 0;
+	} else if(codeChar >= 97 && codeChar <= 122) {
+		if(setValid & (1<<1))	return 1;
+		else					return 0;
+	} else if(codeChar >= 65 && codeChar <= 90) {
+		if(setValid & (1<<2))	return 1;
+		else					return 0;
+	} else if(codeChar == 32) {
+		if(setValid & (1<<3))	return 1;
+		else					return 0;
+	} else if(codeChar == 33) {
+		if(setValid & (1<<4))	return 1;
+		else					return 0;
+	} else if(codeChar == 34) {
+		if(setValid & (1<<5))	return 1;
+		else					return 0;
+	} else if(codeChar == 35) {
+		if(setValid & (1<<6))	return 1;
+		else					return 0;
+	} else if(codeChar == 36) {
+		if(setValid & (1<<7))	return 1;
+		else					return 0;
+	} else if(codeChar == 37) {
+		if(setValid & (1<<8))	return 1;
+		else					return 0;
+	} else if(codeChar == 38) {
+		if(setValid & (1<<9))	return 1;
+		else					return 0;
+	} else if(codeChar == 39) {
+		if(setValid & (1<<10))	return 1;
+		else					return 0;
+	} else if(codeChar == 40 || codeChar == 41) {
+		if(setValid & (1<<11))	return 1;
+		else					return 0;
+	} else if(codeChar == 42) {
+		if(setValid & (1<<12))	return 1;
+		else					return 0;
+	} else if(codeChar == 43) {
+		if(setValid & (1<<13))	return 1;
+		else					return 0;
+	} else if(codeChar == 44) {
+		if(setValid & (1<<14))	return 1;
+		else					return 0;
+	} else if(codeChar == 45) {
+		if(setValid & (1<<15))	return 1;
+		else					return 0;
+	} else if(codeChar == 46) {
+		if(setValid & (1<<16))	return 1;
+		else					return 0;
+	} else if(codeChar == 47) {
+		if(setValid & (1<<17))	return 1;
+		else					return 0;
+	} else if(codeChar == 58) {
+		if(setValid & (1<<18))	return 1;
+		else					return 0;
+	} else if(codeChar == 59) {
+		if(setValid & (1<<19))	return 1;
+		else					return 0;
+	} else if(codeChar == 60 || codeChar == 62) {
+		if(setValid & (1<<20))	return 1;
+		else					return 0;
+	} else if(codeChar == 61) {
+		if(setValid & (1<<21))	return 1;
+		else					return 0;
+	} else if(codeChar == 63) {
+		if(setValid & (1<<22))	return 1;
+		else					return 0;
+	} else if(codeChar == 64) {
+		if(setValid & (1<<23))	return 1;
+		else					return 0;
+	} else if(codeChar == 91 || codeChar == 93) {
+		if(setValid & (1<<24))	return 1;
+		else					return 0;
+	} else if(codeChar == 92) {
+		if(setValid & (1<<25))	return 1;
+		else					return 0;
+	} else if(codeChar == 94) {
+		if(setValid & (1<<26))	return 1;
+		else					return 0;
+	} else if(codeChar == 95) {
+		if(setValid & (1<<27))	return 1;
+		else					return 0;
+	} else if(codeChar == 96) {
+		if(setValid & (1<<28))	return 1;
+		else					return 0;
+	} else if(codeChar == 123 || codeChar == 125) {
+		if(setValid & (1<<29))	return 1;
+		else					return 0;
+	} else if(codeChar == 124) {
+		if(setValid & (1<<30))	return 1;
+		else					return 0;
+	} else if(codeChar == 126) {
+		if(setValid & (1<<31))	return 1;
+		else					return 0;
+	} else
+		return 0;
+}
+
+int BarcodeValidityCheck(char * strCode, int cntCodeChar, int setValid)
+{
+	int nRet = 0, i = 0, status = 0;
+
+	if(0 == setValid) {
+		nRet = 1;
+		goto nExit;
+	}
+
+	for( i = 0; i < cntCodeChar; i++ ) {
+		status = CharValidityCheck(strCode[i], setValid);
+		if(1 != status) {
+			nRet = 0;
+			goto nExit;
+		}
+	}
+
+	nRet = 1;
+
+nExit:
+	return nRet;
+}
+
+int BarcodeResultCheck(DecodeResultNode result, int setDigit, int setValid)
+{
+	int ret = 0;
+
+	if(1 != result.flag) {
+		ret = 0;
+		goto nExit;
+	}
+
+	if(1 != BarcodeDigitNumCheck(result.strCodeData, result.rslt_digit, setDigit)) {
+		ret = 0;
+		goto nExit;
+	}
+	if(1 != BarcodeValidityCheck(result.strCodeData, result.rslt_digit, setValid)) {
+		ret = 0;
+		goto nExit;
+	}
+
+	ret = 1;
+
+nExit:
+	return ret;
 }

@@ -101,6 +101,20 @@ int allocVariableMemStorage_code93(unsigned char * heapPtr, int heapSize)
 	return 1;
 }
 
+void resetVariableMemStorage_code93()
+{
+	gnDecoderProcArr_code93 = 0;
+
+	gnDecoderSeqArrCode93 = 0;
+	gnDecoderFaithArrCode93 = 0;
+
+	gnDecoderStartArr_code93 = 0;
+	gnDecoderStopArr_code93 = 0;
+	gptDecoderStArr_code93 = 0;
+
+	return;
+}
+
 int RecgCode93(int * decode_arr, int arr_count, char * code_result, int * code_digit, 
 	int * code_module, int * code_direct, int * code_idxL, int * code_idxR)
 {

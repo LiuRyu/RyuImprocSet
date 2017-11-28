@@ -124,11 +124,6 @@ void ExpressCutout_release()
 {
 	nIsExpressCutoutInit = 0;
 
-// 	if(algoResult) {
-// 		free(algoResult);
-// 		algoResult = 0;
-// 	}
-
 	algorithm_release();
 
 	ExBillCut_release();

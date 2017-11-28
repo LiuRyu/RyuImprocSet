@@ -43,6 +43,8 @@ IMAGEPROCESSING_API int warpPerspectiveTransformFixed(RyuImage * src,
 \****************************************************************************************/
 IMAGEPROCESSING_API int ryuCopyRoi2Image(RyuImage * src, RyuRect roi, RyuImage * dst);
 
+IMAGEPROCESSING_API int ryuCvtColor(RyuImage * src, RyuImage * dst, int cvt_mode);
+
 
 /****************************************************************************************\
 *								Gaussian blur										     *

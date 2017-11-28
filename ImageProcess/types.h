@@ -192,6 +192,10 @@ RyuImage;
 \****************************************************************************************/
 #define BGR2GRAY(B,G,R)		((R*38 + G*75 + B*15) >> 7)
 
+enum {
+	RYU_BGR2GRAY = 1,
+	RYU_GRAY2BGR = 2,
+};
 
 #endif  __IMAGE_PROCESSING_TYPES_C_H__
 

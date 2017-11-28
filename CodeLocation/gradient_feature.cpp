@@ -8,7 +8,7 @@
 #include "cxcore.h"
 #include "highgui.h"
 #include "image_ui.h"
-#endif  _DEBUG_GRADIENT_FEATURE_
+#endif
 
 #include "code_locate.h"
 
@@ -16,7 +16,7 @@
 const float gfGradThreRatio = 0.025;
 const int gnGradThreMaxVal = 255;
 
-int CodeLocFnc_GradientFeatureSample4(RyuImage * im, int * grad_thre,
+int CodeLocFnc_GradientFeature_w4s4(RyuImage * im, int * grad_thre,
 									  RyuImage * gradient, RyuImage * gradorie)
 {
 	int nRet = 0;
@@ -233,3 +233,238 @@ nExit:
 }
 
 
+int GradientFeature_w3s3(RyuImage * im, RyuImage * gradient, int * grad_thre, float grad_thre_ratio)
+{
+	int nRet = 0;
+	int i = 0, j = 0, nstep = 0;
+
+	int dx = 0, dy = 0, val = 0, idx = 0;
+
+	int nsum = 0, nthre = 0;
+
+	int hist[256] = {0};
+
+	unsigned char * pGrad = 0, * plGrad = 0;
+
+	unsigned char * plOffset_n1 = 0, * plOffset_0 = 0, * plOffset_p1 = 0;
+	unsigned char * pOffset_n1 = 0, * pOffset_0 = 0, * pOffset_p1 = 0;
+
+	if(NULL == im || NULL == gradient || NULL == grad_thre) {
+		nRet = -1;
+		goto nExit;
+	}
+
+	if(NULL == im->imageData || NULL == gradient->imageData) {
+		nRet = -2;
+		goto nExit;
+	}
+
+	if(im->width/3 != gradient->width || im->height/3 != gradient->height) {
+		nRet = -3;
+		goto nExit;
+	}
+
+	nthre = RYUMAX(*grad_thre, 10);
+
+	//////////////////////////////////////////////////////////////////////////
+	// 获取(w/3)*(h/3)梯度图像
+	nstep = im->widthStep * 3;
+	plGrad	= gradient->imageData;
+
+	plOffset_n1	= im->imageData;
+	plOffset_0	= plOffset_n1 + im->widthStep;
+	plOffset_p1	= plOffset_0 + im->widthStep;
+	for(i = gradient->height; i > 0; i--) {
+		pOffset_n1 = plOffset_n1;
+		pOffset_0 = plOffset_0;
+		pOffset_p1 = plOffset_p1;
+		pGrad = plGrad;
+
+		for(j = gradient->width; j > 0; j--) {
+			dx = abs(pOffset_0[2] - pOffset_0[0]);
+			dy = abs(pOffset_p1[1] - pOffset_n1[1]);
+			val = (dx > dy) ? dx : dy;
+
+			*pGrad = val;
+			hist[val]++;
+
+			pOffset_n1 += 3;
+			pOffset_0 += 3;
+			pOffset_p1 += 3;
+			pGrad++;
+		}
+		plOffset_n1 += nstep;
+		plOffset_0 += nstep;
+		plOffset_p1 += nstep;
+		plGrad += gradient->widthStep;
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	// 确定有效梯度阈值
+	nsum = idx = 0;
+	val = gradient->width * gradient->height * gfGradThreRatio;
+	for(i = 255; i >= 0; i--) {
+		nsum += hist[i];
+		if(nsum >= val) {
+			idx = i - 1;
+			break;
+		}
+	}
+
+	*grad_thre = RYUMIN(36, RYUMAX(idx, nthre));
+	nRet = 1;
+
+#ifdef  _DEBUG_GRADIENT_FEATURE_
+	printf("[GradFeature_w3s3]- ratio = %.5f, grad_thre = %d\n", 
+		grad_thre_ratio, *grad_thre);
+	ryuShowImage("GradFeature_w3s3_0", gradient);
+	RyuImage * Grad3C_dbg = ryuCreateImage(ryuGetSize(gradient), 8, 3);
+	ryuCvtColor(gradient, Grad3C_dbg, RYU_GRAY2BGR);
+	unsigned char * plGrad_dbg = Grad3C_dbg->imageData, * pGrad_dbg = 0;
+	for(int i_dbg = 0; i_dbg < Grad3C_dbg->height; i_dbg++) {
+		pGrad_dbg = plGrad_dbg;
+		for(int j_dbg = 0; j_dbg < Grad3C_dbg->width; j_dbg++) {
+			if(*pGrad_dbg > *grad_thre) {
+				pGrad_dbg[1] = 255;
+			}
+			pGrad_dbg += 3;
+		}
+		plGrad_dbg += Grad3C_dbg->widthStep;
+	}
+	ryuShowImage("GradFeature_w3s3_1", Grad3C_dbg);
+	cvWaitKey();
+	ryuReleaseImage(&Grad3C_dbg);
+#endif
+
+nExit:
+	return nRet;
+}
+
+
+int GetGradientFeatureIntegral(RyuImage * gradient, int grad_thre, RyuImage * integral)
+{
+	int nRet = 0;
+	int i = 0, j = 0;
+
+	unsigned char * pGrad = 0, * plGrad = 0;
+	unsigned int * pInteg = 0, * plInteg = 0;
+	unsigned int * pInteg_n1 = 0, * plInteg_n1 = 0;
+
+	if(NULL == gradient || NULL == integral) {
+		nRet = -1;
+		goto nExit;
+	}
+
+	if(NULL == gradient->imageData || NULL == integral->imageData) {
+		nRet = -2;
+		goto nExit;
+	}
+
+	if(RYU_DEPTH_32N != integral->depth) {
+		nRet = -3;
+		goto nExit;
+	}
+
+	if(gradient->width != integral->width || gradient->height != integral->height) {
+		nRet = -4;
+		goto nExit;
+	}
+
+	// 建立阈值过滤后的梯度（幅值/个数）积分图
+	plGrad	= gradient->imageData;
+	plInteg = plInteg_n1 = (unsigned int *)integral->imageData;
+	// 建立首行积分图
+	*plInteg = (*plGrad > grad_thre ? 1 : 0);		// 行首元素
+	pGrad = plGrad + 1;
+	pInteg = plInteg + 1;
+	for(i = 1; i < gradient->width; i++) {
+		*pInteg = *(pInteg-1) + (*pGrad > grad_thre ? 1 : 0);
+		pGrad++;
+		pInteg++;
+	}
+	plGrad += gradient->widthStep;
+	plInteg += gradient->width;
+
+	for(i = gradient->height; i > 0; i--) {
+		*plInteg = *plInteg_n1 +  (*pGrad > grad_thre ? 1 : 0);		// 行首元素
+		pGrad = plGrad + 1;
+		pInteg = plInteg + 1;
+		pInteg_n1 = plInteg_n1 + 1;
+		for(j = gradient->width; j > 0; j--) {
+			*pInteg =  (*pGrad > grad_thre ? 1 : 0) + *(pInteg-1) + *pInteg_n1 - *(pInteg_n1-1);
+			pGrad++;
+			pInteg++;
+			pInteg_n1++;
+		}
+		plGrad += gradient->widthStep;
+		plInteg_n1 = plInteg;
+		plInteg += gradient->width;
+	}
+
+	nRet = 1;
+
+nExit:
+	return nRet;
+}
+
+int FoldGradientFeatureInSlideWindow(RyuImage * integral, RyuImage * feature_map,
+							  RyuSize sw_size, RyuSize sw_step)
+{
+	int nRet = 0;
+	int i = 0, j = 0;
+	int h_step = 0, v_step = 0;
+
+	unsigned int * plInteg = 0, * pInteg = 0;
+	unsigned int * plInteg_diag = 0, * pInteg_diag = 0;
+	unsigned int * plFmap = 0, * pFmap = 0;
+
+	if(NULL == integral || NULL == feature_map) {
+		nRet = -1;
+		goto nExit;
+	}
+
+	if(NULL == integral->imageData || NULL == feature_map->imageData) {
+		nRet = -2;
+		goto nExit;
+	}
+
+	if(RYU_DEPTH_32N != integral->depth || RYU_DEPTH_32N != feature_map->depth) {
+		nRet = -3;
+		goto nExit;
+	}
+
+	if(sw_size.width <= 0 || sw_size.height <= 0
+			|| sw_step.width <= 0 || sw_step.height <= 0) {
+		nRet = -4;
+		goto nExit;
+	}
+
+	// 忽略第一行/列元素
+	h_step = (integral->width - sw_size.width - 1) / sw_step.width + 1;
+	v_step = (integral->height - sw_size.height - 1) / sw_step.height + 1;
+
+	feature_map->width = h_step;
+	feature_map->height = v_step;
+
+	plInteg = (unsigned int *)integral->imageData;
+	plInteg_diag = plInteg + (sw_size.height) * integral->width;
+	plFmap = (unsigned int *)feature_map->imageData;
+	for(i = v_step; i > 0; i--) {
+		pInteg = plInteg;
+		pInteg_diag = plInteg_diag;
+		pFmap = plFmap;
+		for(j = h_step; j > 0; j--) {
+			*pFmap = pInteg_diag[sw_size.width] - pInteg_diag[0] - pInteg[sw_size.width] + pInteg[0];
+			pInteg += sw_step.width;
+			pInteg_diag += sw_step.width;
+			pFmap++;
+		}
+		plInteg += sw_step.height;
+		plInteg_diag += sw_step.height;
+		plFmap += h_step;
+	}
+
+	nRet = 1;
+nExit:
+	return nRet;
+}

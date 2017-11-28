@@ -69,3 +69,60 @@ int ryuCopyImage2Roi(RyuImage * src, RyuImage * dst, RyuRect roi)
 {
 	return 1;
 }
+
+int ryuCvtColor(RyuImage * src, RyuImage * dst, int cvt_mode)
+{
+	int nRet = 0;
+	int i = 0, j = 0, v = 0;
+
+	unsigned char * plSrc = 0, * pSrc = 0;
+	unsigned char * plDst = 0, * pDst = 0;
+
+	if(cvt_mode == RYU_BGR2GRAY) {
+		if(src->width != dst->width || src->height != dst->height
+				|| src->depth != RYU_DEPTH_8C || src->nChannels != 3
+				|| dst->depth != RYU_DEPTH_8C || dst->nChannels != 1) {
+			nRet = -1;
+			goto nExit;
+		}
+		plSrc = src->imageData;
+		plDst = dst->imageData;
+		for(i = 0; i < src->height; i++) {
+			pSrc = plSrc;
+			pDst = plDst;
+			for(j = 0; j < src->width; j++) {
+				v = BGR2GRAY(pSrc[0], pSrc[1], pSrc[2]);
+				*(pDst++) = ((v < 255) ? v : 255);
+				pSrc += 3;
+			}
+			plSrc += src->widthStep;
+			plDst += dst->widthStep;
+		}
+		nRet = 1;
+	} else if(cvt_mode == RYU_GRAY2BGR) {
+		if(src->width != dst->width || src->height != dst->height
+			|| src->depth != RYU_DEPTH_8C || src->nChannels != 1
+			|| dst->depth != RYU_DEPTH_8C || dst->nChannels != 3) {
+				nRet = -1;
+				goto nExit;
+		}
+		plSrc = src->imageData;
+		plDst = dst->imageData;
+		for(i = 0; i < src->height; i++) {
+			pSrc = plSrc;
+			pDst = plDst;
+			for(j = 0; j < src->width; j++) {
+				pDst[0] = pDst[1] = pDst[2] = *(pSrc++);
+				pDst += 3;
+			}
+			plSrc += src->widthStep;
+			plDst += dst->widthStep;
+		}
+		nRet = 1;
+	} else {
+		nRet = 0;
+	}
+
+nExit:
+	return nRet;
+}

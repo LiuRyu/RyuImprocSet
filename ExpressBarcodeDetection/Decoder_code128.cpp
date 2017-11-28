@@ -125,6 +125,20 @@ int allocVariableMemStorage_code128(unsigned char * heapPtr, int heapSize)
 	return 1;
 }
 
+void resetVariableMemStorage_code128()
+{
+	gnDecoderProcArr_code128 = 0;
+
+	gnDecoderSeqArrCode128 = 0;
+	gnDecoderFaithArrCode128 = 0;
+
+	gnDecoderStartArr_code128 = 0;
+	gnDecoderStopArr_code128 = 0;
+	gptDecoderStArr_code128 = 0;
+
+	return;
+}
+
 int RecgCode128(int * decode_arr, /*int * decode_proc_arr, */int arr_count, 
 				char * code_result, int * code_digit, int * code_module, 
 				int * code_direct, int * code_idxL, int * code_idxR)

@@ -12,7 +12,6 @@
 #include "code_qal.h"
 #include "code_locate.h"
 #include "Exwaybill_cutout.h"
-#include "ExpressCutout.h"
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -44,7 +43,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	//////////////////////////////////////////////////////////////////////////
 	// im_proc test
 	// 图像读取路径，可以是文件夹或单个图像文件
-	char srcFilePath[] = "D:\\Test image\\EN08_OCRNumRecog\\20170907_整合数字截图";
+	char srcFilePath[] = "F:\\EN08_QRCodeRecog\\im_raw";
 	char dstPath[MAX_PATH] = "F:/EN08_QRCodeRecog/";
 	std::list<PathElem> ImgList; 
 	std::list<PathElem>::iterator pImgListTemp; 
@@ -78,14 +77,13 @@ int _tmain(int argc, _TCHAR* argv[])
 			continue;
 		}
 
-		/*/////////////////////////////////////////////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////
 		// Test begin-测试二维码定位算法
 
 		// 算法测时启动
 		ryuTimerStart();
 
 		RyuImage * im_ryu = iplImage2ryuImage(im);
-		//status = ExwaybillCutout_process(im_ryu);
 		status = CodeLocating_process(im_ryu);
 		ryuReleaseImageHeader(&im_ryu);
 
@@ -96,9 +94,9 @@ int _tmain(int argc, _TCHAR* argv[])
 		printf("--_tmain-- 算法耗时: %s us\n", sTimeCost);
 
 		// Test end-测试二维码定位算法
-		/////////////////////////////////////////////////////////////////////////*/
-
 		//////////////////////////////////////////////////////////////////////////
+
+		/*/////////////////////////////////////////////////////////////////////////
 		// Test begin-测试OCR图像二值化效果
 		double hscale = 1.0, vscale = 1.0;
 		cvNamedWindow("im");
@@ -142,7 +140,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		if(binary)
 			ryuReleaseImage(&binary);
 		// Test end-测试OCR图像二值化效果
-		//////////////////////////////////////////////////////////////////////////
+		/////////////////////////////////////////////////////////////////////////*/
 
 		/*/////////////////////////////////////////////////////////////////////////
 		// Test begin-测试相机调校模块功能
