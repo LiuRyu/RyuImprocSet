@@ -5,6 +5,63 @@
 #include "improc.h"
 
 
+int ryuThreshold(RyuImage * img, RyuImage * bina, int thresh)
+{
+	int i = 0, j = 0;
+	unsigned char * pImg = 0, * pImgL = img->imageData;
+	unsigned char * pBina = 0, * pBinaL = bina->imageData;
+
+	if(NULL == img || NULL == bina) {
+#if _IMAGEPROCESSING_PRINT_
+		printf("Error. Invalid input pointer(s). [ryuThreshold]\n");
+#endif
+		return -1;
+	}
+
+	if(RYU_DEPTH_8C != img->depth || 1 != img->nChannels) {
+#if _IMAGEPROCESSING_PRINT_
+		printf("Error. Wrong type of im, should be CV_8UC1. [ryuThreshold]\n");
+#endif
+		return -1;
+	}
+
+	if(RYU_DEPTH_8C != bina->depth || 1 != bina->nChannels) {
+#if _IMAGEPROCESSING_PRINT_
+		printf("Error. Wrong type of im, should be CV_8UC1. [ryuThreshold]\n");
+#endif
+		return -1;
+	}
+
+	if(NULL == img->imageData || NULL == bina->imageData) {
+#if _IMAGEPROCESSING_PRINT_
+		printf("Error. Invalid imageData. [ryuThreshold]\n");
+#endif
+		return -1;
+	}
+
+	if(img->width != bina->width || img->height != bina->height) {
+#if _IMAGEPROCESSING_PRINT_
+		printf("Error. Size cannot match. [ryuThreshold]\n");
+#endif
+		return -1;
+	}
+
+	for(j = 0; j < img->height; j++) {
+		pImg = pImgL;
+		pBina = pBinaL;
+		for(i = 0; i < img->width; i++) {
+			*pBina = (*pImg > thresh) ? 255 : 0;
+			pImg++;
+			pBina++;
+		}
+		pImgL += img->widthStep;
+		pBinaL += bina->widthStep;
+	}
+
+	return 1;
+}
+
+
 int ryuImageIntegrogram(RyuImage * im, RyuImage * out)
 {
 	if(NULL == im || NULL == out) {

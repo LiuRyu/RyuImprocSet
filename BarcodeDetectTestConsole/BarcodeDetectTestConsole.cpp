@@ -43,7 +43,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		// 路径1：图片读取路径
 		//"F:\\EN05_Code128Recog\\Materials\\1d\\20150303_kd_nrcg\\",
 		//"F:\\EN07_ExpressRecog\\20160628_EMS1200W不识别\\",
-		"F:\\EN07_ExpressRecog2\\2017.11.28测试图片\\",	
+		"F:\\EN07_ExpressRecog2\\2017.11.30天津\\",	
 		// 路径2：条码识别-图片保存路径
 		"1 识别成功\\",
 		// 路径3：未识别条码-图片保存路径

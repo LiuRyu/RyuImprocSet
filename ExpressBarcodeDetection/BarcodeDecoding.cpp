@@ -542,7 +542,7 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 					}
 				}
 
-				/*
+				
 				if((setType & 0x8) || 0 == setType) {
 					status = 0;
 					memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
@@ -554,7 +554,7 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 						break;
 					}
 				}
-
+				/*
 				if((setType & 0x10) || 0 == setType) {
 					status = 0;
 					memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!

@@ -83,9 +83,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		// 算法测时启动
 		ryuTimerStart();
 
-		RyuImage * im_ryu = iplImage2ryuImage(im);
-		status = CodeLocating_process(im_ryu);
-		ryuReleaseImageHeader(&im_ryu);
+		status = CodeLocating_process(im, pImgListTemp->SrcImgPath);
 
 		// 算法测时停止
 		long lTimeCost = ryuTimerStop();

@@ -9,6 +9,8 @@
 /****************************************************************************************\
 *									Image binarize								         *
 \****************************************************************************************/
+IMAGEPROCESSING_API int ryuThreshold(RyuImage * img, RyuImage * bina, int thresh);
+
 IMAGEPROCESSING_API int ryuImageIntegrogram(RyuImage * im, RyuImage * out);
 
 IMAGEPROCESSING_API int ryuCentralLocalBinarize(RyuImage * im, 

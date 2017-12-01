@@ -113,7 +113,7 @@ int RecgCodeI2of5(int * decode_arr, int arr_count, char * code_result, int * cod
 	nModuleCnt = nSeqCount * 8 + 9;
 
 	/*
-	// 校验位检验，仅限于有校验位的39条码
+	// 校验位检验，仅限于有校验位的I2of5条码
 	status = CheckDigitVerify_I2of5( gnDecoderSeqArrI2of5, gnDecoderFaithArrI2of5, nSeqCount, 0 );
 	if(1 != status ) {
 #ifdef	_DEBUG_

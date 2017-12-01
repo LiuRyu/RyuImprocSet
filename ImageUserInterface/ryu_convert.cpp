@@ -16,6 +16,8 @@ RyuImage * iplImage2ryuImage(IplImage * ipl)
 	RyuImage * ryu = ryuCreateImageHeader(ryuSize(ipl->width, ipl->height),
 		ipl->depth, ipl->nChannels);
 
+	ryu->widthStep = ipl->widthStep;
+
 	ryu->imageData = (unsigned char *)ipl->imageData;
 
 	return ryu;
@@ -25,6 +27,8 @@ IplImage * ryuImage2iplImage(RyuImage * ryu)
 {
 	IplImage * ipl = cvCreateImageHeader(cvSize(ryu->width, ryu->height), 
 		ryu->depth, ryu->nChannels);
+
+	ipl->widthStep = ryu->widthStep;
 
 	ipl->imageData = ipl->imageDataOrigin = (char *)ryu->imageData;
 
