@@ -603,7 +603,7 @@ int WritePatchCoords2File(CvPoint * patch_coords, int patch_cnt, char * imfile_p
 	char fileName[MAX_PATH];
 	char fileExt[] = ".txt";
 	char childPath[] = "pacth_w64s48";
-	char sp;
+	char sp = '';
 
 	int nLen = 0;
 	FILE *pFile = NULL; 
