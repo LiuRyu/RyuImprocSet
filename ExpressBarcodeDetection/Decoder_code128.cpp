@@ -274,7 +274,7 @@ int Decoder_code128(int * decode_arr, int arr_count, DecodeResultNode * result)
 
 	if(!decode_arr || !result) {
 #ifdef	_PRINT_PROMPT
-			printf( "ERROR! Invalid input of RecgCode128, decode_arr = 0x%x, result=0x%x\n", 
+			printf( "ERROR! Invalid input of Decoder_code128, decode_arr = 0x%x, result=0x%x\n", 
 				decode_arr, result);
 #endif
 			nRet = RYU_DECODERR_NULLPTR;

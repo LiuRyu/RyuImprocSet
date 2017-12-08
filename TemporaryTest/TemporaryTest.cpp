@@ -43,12 +43,13 @@ int _tmain(int argc, _TCHAR* argv[])
 	//////////////////////////////////////////////////////////////////////////
 	// im_proc test
 	// 图像读取路径，可以是文件夹或单个图像文件
-	char srcFilePath[] = "F:\\EN08_QRCodeRecog\\im_raw";
+	char srcFilePath[] = //"F:\\EN08_QRCodeRecog\\im_raw";
+						 "F:\\EN08_OCRNumRecog\\20170907_整合数字截图";
 	char dstPath[MAX_PATH] = "F:/EN08_QRCodeRecog/";
 	std::list<PathElem> ImgList; 
 	std::list<PathElem>::iterator pImgListTemp; 
 
-	int start_frame = 1;
+	int start_frame = 150;
 
 	CvPoint label_pt = cvPoint(-1, -1);
 

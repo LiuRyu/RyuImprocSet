@@ -6,7 +6,6 @@
 
 #include "RyuCore.h"
 
-#include "Decoder_I2of5.h"
 #include "Decoder_EAN13.h"
 #include "BarcodeDecoding.h"
 
@@ -545,13 +544,12 @@ int BarcodeDecoding_run(unsigned char * im, int * integr, int width, int height,
 				
 				if((setType & 0x8) || 0 == setType) {
 					status = 0;
-					memset( strResult, 0, sizeof(char) * 128 );		// 写入前置零是必要的!!!
 					memcpy( gpnDcdDecodeArrProc, pDecodeArr, nColCount * sizeof(int));		// 使用副本进行识别，保留原数组不变
-					status = RecgCodeI2of5(gpnDcdDecodeArrProc, nColCount, strResult, &nDigitCnt, &nModuleCnt, 
-						&nDirection, &nLeftIdx, &nRightIdx);
-					if( 1 == status ) {
-						nCodeType = 0x8;
-						break;
+					status = Decoder_I2of5(gpnDcdDecodeArrProc, nColCount, &tmpResult);
+					if(1 == BarcodeResultCheck(tmpResult, setDigit, setValid)) {
+						tmpResult.left_idx = (int)fabs(pDemarcCoord[tmpResult.left_idx]);
+						tmpResult.right_idx = (int)fabs(pDemarcCoord[tmpResult.right_idx+1]);
+						pushDecodeResult2Candidates(tmpResult);
 					}
 				}
 				/*
@@ -650,7 +648,7 @@ nExit:
 }
 
 
-int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int width, int height, 
+int BarcodeDecoding_DemarcateAnalysis(unsigned char * im, int * integr, int width, int height, 
 									  int slice_height, int slice_top, int slice_bottom,
 									  int * decode_bcnt, int * decode_scnt, float * min_module) 
 {
@@ -808,81 +806,111 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
-	IplImage * iplBinaImg = cvCreateImage( cvSize(width, height+32+256+128+16+8+4*4), 8, 1 );
+	int zoom_dbg = 4;
+	IplImage * iplBinaImg = cvCreateImage( cvSize(width * zoom_dbg, height+32+256+128+16+8+4*4), 8, 1 );
 	IplImage * iplBinaImg3C = cvCreateImage( cvGetSize(iplBinaImg), 8, 3 );
+
+	CvFont font_dbg;
+	char txt_dbg[32];
+	cvInitFont(&font_dbg, CV_FONT_HERSHEY_COMPLEX_SMALL, 0.7, 0.7, 0.0, 0.5, CV_AA);
 
 	int offsetY = 0;
 	// 绘制图像
 	for (int y = 0; y < height; y++) {
+		unsigned char * pIm_dbg = (unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*y);
 		for (int x = 0; x < width; x++) {
-			int gloom = im[y*width+x];
-			if(y < slice_top || y > slice_bottom)
-				gloom = gloom / 2;
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*y))[x] = gloom;
+			for(int z = 0; z < zoom_dbg; z++) {
+				int gloom = im[y*width+x];
+				if(y < slice_top || y > slice_bottom)
+					gloom = gloom / 2;
+				pIm_dbg[z] = gloom;
+			}
+			pIm_dbg += zoom_dbg;
 		}
 	}
 	offsetY += height;
+
 	// 绘制分割区
 	for (int y = 0; y < 4; y++) {
-		for (int x = 0; x < width; x++) {
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[x] = 0x80;
+		unsigned char * pIm_dbg = (unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY));
+		for (int x = 0; x < iplBinaImg->width; x++) {
+			pIm_dbg[x] = 0x80;
 		}
 	}
 	offsetY += 4;
+
 	// 绘制分块均值
 	for (int y = 0; y < 32; y++) {
+		unsigned char * pIm_dbg = (unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY));
 		for (int x = 0; x < width; x++) {
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[x] = 255-pColumnArr[x];
+			for(int z = 0; z < zoom_dbg; z++) {
+				pIm_dbg[z] = 255-pColumnArr[x];
+			}
+			pIm_dbg += zoom_dbg;
 		}
 	}
 	offsetY += 32;
+
 	// 绘制分割区
 	for (int y = 0; y < 4; y++) {
-		for (int x = 0; x < width; x++) {
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[x] = 0x80;
+		unsigned char * pIm_dbg = (unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY));
+		for (int x = 0; x < iplBinaImg->width; x++) {
+			pIm_dbg[x] = 0x80;
 		}
 	}
 	offsetY += 4;
+
 	// 绘制灰度曲线
 	for (int y = 0; y < 256; y++) {
 		unsigned char * pDbgIm = (unsigned char *)iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY);
 		memset(pDbgIm, 0, iplBinaImg->widthStep * sizeof(unsigned char));
 		for (int x = 0; x < width; x++) {
-			if(y >= 255 - pColumnArr[x])
-				pDbgIm[x] = 255;
+			for(int z = 0; z < zoom_dbg; z++) {
+				if(y >= 255 - pColumnArr[x])
+					pDbgIm[z] = 255;
+			}
+			pDbgIm += zoom_dbg;
 		}
 	}
 	offsetY += 256;
+
 	// 绘制分割区
 	for (int y = 0; y < 4; y++) {
-		for (int x = 0; x < width; x++) {
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[x] = 0x80;
+		unsigned char * pIm_dbg = (unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY));
+		for (int x = 0; x < iplBinaImg->width; x++) {
+			pIm_dbg[x] = 0x80;
 		}
 	}
 	offsetY += 4;
 
 	cvCvtColor(iplBinaImg, iplBinaImg3C, CV_GRAY2BGR);
+	sprintf(txt_dbg, "x%d", zoom_dbg);
+	cvPutText(iplBinaImg3C, txt_dbg, cvPoint(2, 12), &font_dbg, CV_RGB(0,128,0));
 
 	// 绘制梯度曲线
 	for (int y = 0; y < 128; y++) {
 		unsigned char * pDbgIm = (unsigned char *)iplBinaImg3C->imageData + iplBinaImg3C->widthStep*(y+offsetY);
 		memset(pDbgIm, 0, iplBinaImg3C->widthStep * sizeof(unsigned char));
 		for (int x = 0; x < width; x++) {
-			if(y >= 128 - abs(pGradArr[x])) {
-				pDbgIm[3*x] = 0;
-				pDbgIm[3*x+1] = pGradArr[x] > 0 ? 255 : 0;
-				pDbgIm[3*x+2] = pGradArr[x] < 0 ? 255 : 0;
+			for(int z = 0; z < zoom_dbg; z++) {
+				if(y >= 128 - abs(pGradArr[x])) {
+					pDbgIm[3*z] = 0;
+					pDbgIm[3*z+1] = pGradArr[x] > 0 ? 255 : 0;
+					pDbgIm[3*z+2] = pGradArr[x] < 0 ? 255 : 0;
+				}
 			}
+			pDbgIm += (3 * zoom_dbg);
 		}
 	}
 	offsetY += 128;
 
 	// 绘制分割区
 	for (int y = 0; y < 4; y++) {
-		for (int x = 0; x < width; x++) {
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[3*x] = 0x80;
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[3*x+1] = 0x80;
-			((unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY)))[3*x+2] = 0x80;
+		unsigned char * pIm_dbg = (unsigned char *)(iplBinaImg->imageData + iplBinaImg->widthStep*(y+offsetY));
+		for (int x = 0; x < iplBinaImg->width; x++) {
+			pIm_dbg[3*x] = 0x80;
+			pIm_dbg[3*x+1] = 0x80;
+			pIm_dbg[3*x+2] = 0x80;
 		}
 	}
 	offsetY += 4;
@@ -900,13 +928,13 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 		else if(-1 == demarc_arr[kkk].type)
 			color = CV_RGB(255,0,0);
 		if(kkk % 2) {
-			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[kkk].idx_b, offsetY), cvPoint(demarc_arr[kkk].idx_e, offsetY+7), color, CV_FILLED);
+			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[kkk].idx_b*zoom_dbg, offsetY), cvPoint(demarc_arr[kkk].idx_e*zoom_dbg+(zoom_dbg-1), offsetY+7), color, CV_FILLED);
 		} else {
-			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[kkk].idx_b, offsetY+8), cvPoint(demarc_arr[kkk].idx_e, offsetY+15), color, CV_FILLED);
+			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[kkk].idx_b*zoom_dbg, offsetY+8), cvPoint(demarc_arr[kkk].idx_e*zoom_dbg+(zoom_dbg-1), offsetY+15), color, CV_FILLED);
 		}
 		if(demarc_arr[kkk].max_v > 0)
-			cvLine(iplBinaImg3C, cvPoint(demarc_arr[kkk].idx_b, offsetYMaxv-demarc_arr[kkk].max_v), 
-			cvPoint(demarc_arr[kkk].idx_e, offsetYMaxv-demarc_arr[kkk].max_v), CV_RGB(255,255,0));
+			cvLine(iplBinaImg3C, cvPoint(demarc_arr[kkk].idx_b*zoom_dbg, offsetYMaxv-demarc_arr[kkk].max_v), 
+			cvPoint(demarc_arr[kkk].idx_e*zoom_dbg, offsetYMaxv-demarc_arr[kkk].max_v), CV_RGB(255,255,0));
 	}
 	offsetY += 16;
 
@@ -952,8 +980,10 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 			}
 #ifdef _DEBUG_
 #ifdef _DEBUG_DECODE
-			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[j].idx_b, offsetY), cvPoint(demarc_arr[j].idx_e, offsetY+7), CV_RGB(0,128,128), CV_FILLED);
-			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[j].idxex_b, offsetY), cvPoint(demarc_arr[j].idxex_e, offsetY+7), CV_RGB(0,255,255), CV_FILLED);
+			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[j].idx_b*zoom_dbg, offsetY), 
+				cvPoint(demarc_arr[j].idx_e*zoom_dbg, offsetY+7), CV_RGB(0,128,128), CV_FILLED);
+			cvRectangle(iplBinaImg3C, cvPoint(demarc_arr[j].idxex_b*zoom_dbg, offsetY), 
+				cvPoint(demarc_arr[j].idxex_e*zoom_dbg, offsetY+7), CV_RGB(0,255,255), CV_FILLED);
 #endif _DEBUG_DECODE
 #endif _DEBUG_
 			// 之前有未知区间，则验证插入
@@ -1043,15 +1073,15 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 		if(demarc_effcnt > 0) {
 			int dbgDiff1 = (lumH - lumL) / 5;
 			int dbgDiff0 = (dbgLumH - dbgLumL) / 5;
-			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumL),
-				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumL), CV_RGB(255, 0, 0));
-			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumH),
-				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumH), CV_RGB(0, 255, 0));
+			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)*zoom_dbg/2, dbgOffsetYLum-dbgLumL),
+				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)*zoom_dbg/2, dbgOffsetYLum-lumL), CV_RGB(255, 0, 0));
+			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)*zoom_dbg/2, dbgOffsetYLum-dbgLumH),
+				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)*zoom_dbg/2, dbgOffsetYLum-lumH), CV_RGB(0, 255, 0));
 
-			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumL-dbgDiff0),
-				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumL-dbgDiff1), CV_RGB(255, 96, 96));
-			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)/2, dbgOffsetYLum-dbgLumH+dbgDiff0),
-				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)/2, dbgOffsetYLum-lumH+dbgDiff1), CV_RGB(96, 255, 96));
+			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)*zoom_dbg/2, dbgOffsetYLum-dbgLumL-dbgDiff0),
+				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)*zoom_dbg/2, dbgOffsetYLum-lumL-dbgDiff1), CV_RGB(255, 96, 96));
+			cvLine(iplBinaImg3C, cvPoint((demarc_arr[j-1].idx_b+demarc_arr[j-1].idx_e)*zoom_dbg/2, dbgOffsetYLum-dbgLumH+dbgDiff0),
+				cvPoint((demarc_arr[j].idx_b+demarc_arr[j].idx_e)*zoom_dbg/2, dbgOffsetYLum-lumH+dbgDiff1), CV_RGB(96, 255, 96));
 		}
 		dbgLumL = lumL;
 		dbgLumH = lumH;
@@ -1190,11 +1220,11 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 		else
 			printf("[%2d]=%4.2f  ", jjj, fDecodeElements_basic[jjj]);
 
-		cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_basic[jjj]+0.5), dbgOffsetYDem_basic),
-			cvPoint(int(fDemarcCoord_basic[jjj]+0.5), dbgOffsetYDem_basic+12), CV_RGB(0, 255, 0));
+		cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_basic[jjj]*zoom_dbg+0.5), dbgOffsetYDem_basic),
+			cvPoint(int(fDemarcCoord_basic[jjj]*zoom_dbg+0.5), dbgOffsetYDem_basic+12), CV_RGB(0, 255, 0));
 	}
-	cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_basic[decodeCnt_basic]+0.5), dbgOffsetYDem_basic),
-		cvPoint(int(fDemarcCoord_basic[decodeCnt_basic]+0.5), dbgOffsetYDem_basic+12), CV_RGB(0, 255, 0));
+	cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_basic[decodeCnt_basic]*zoom_dbg+0.5), dbgOffsetYDem_basic),
+		cvPoint(int(fDemarcCoord_basic[decodeCnt_basic]*zoom_dbg+0.5), dbgOffsetYDem_basic+12), CV_RGB(0, 255, 0));
 
 	printf("\n********strict fMin = %3.2f\n", fMin);
 	int dbgOffsetYDem_strict = height + 32 + 4 - 8;
@@ -1206,12 +1236,12 @@ int BarcodeDecoding_DemarcateAnalysis( unsigned char * im, int * integr, int wid
 		else
 			printf("[%2d]=%4.2f  ", jjj, fDecodeElements_strict[jjj]);
 
-		cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_strict[jjj]+0.5), dbgOffsetYDem_strict),
-			cvPoint(int(fDemarcCoord_strict[jjj]+0.5), dbgOffsetYDem_strict+12), CV_RGB(255, 0, 0));
+		cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_strict[jjj]*zoom_dbg+0.5), dbgOffsetYDem_strict),
+			cvPoint(int(fDemarcCoord_strict[jjj]*zoom_dbg+0.5), dbgOffsetYDem_strict+12), CV_RGB(255, 0, 0));
 	}
 	printf("\n");
-	cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_strict[decodeCnt_strict]+0.5), dbgOffsetYDem_strict),
-		cvPoint(int(fDemarcCoord_strict[decodeCnt_strict]+0.5), dbgOffsetYDem_strict+12), CV_RGB(255, 0, 0));
+	cvLine(iplBinaImg3C, cvPoint(int(fDemarcCoord_strict[decodeCnt_strict]*zoom_dbg+0.5), dbgOffsetYDem_strict),
+		cvPoint(int(fDemarcCoord_strict[decodeCnt_strict]*zoom_dbg+0.5), dbgOffsetYDem_strict+12), CV_RGB(255, 0, 0));
 	cvNamedWindow("Decode");
 	cvShowImage("Decode", iplBinaImg3C);
 	cvWaitKey();
@@ -2050,6 +2080,15 @@ int BarcodeDecoding_init( int max_width, int max_height )
 		goto nExit;
 	}
 
+	status = allocVariableMemStorage_I2of5(gpDcdDecoderMemSets, gnDcdDecoderMemSize);
+	if(1 != status) {
+#ifdef	_PRINT_PROMPT
+		printf("ERROR! Cannot alloc memory for I2of5 decoder in BarcodeDecoding_init\n");
+#endif
+		nRet = -1;
+		goto nExit;
+	}
+
 	nRet = gnDcdInitFlag = 1;
 
 nExit:
@@ -2133,6 +2172,8 @@ void BarcodeDecoding_release()
 	resetVariableMemStorage_code39();
 
 	resetVariableMemStorage_code93();
+
+	resetVariableMemStorage_I2of5();
 
 	gnDcdInitFlag = 0;
 }

@@ -8,11 +8,11 @@
 #include "highgui.h"
 
 #include "ryucv.h"
+#include "general_utils.h"
 
 #define  _DEBUG_CODE_LOCATE_
 #ifdef   _DEBUG_CODE_LOCATE_
 #include "image_ui.h"
-#include "general_utils.h"
 #endif
 
 #include "code_locate.h"
@@ -28,14 +28,44 @@ IplImage * giIntegral = 0, * giFeature = 0;
 CvPoint * gptPatchCoords = 0;
 #endif _METHOD_GRADIENT_FEATURE_
 
-int CodeLocating_process(IplImage * im, char * imfile_path)
+int CodeLocating_process(char * imfile_path, CvSize patch_size, CvSize patch_step, int grad_mode)
 {
-	int ret_val = 0, status = 0;
+	int nRet = 0, status = 0;
+	
+	IplImage * im = cvLoadImage(imfile_path, CV_LOAD_IMAGE_GRAYSCALE);
+
+	int i = 0;
+	int gradThre = 10;
+	IplImage * iGrad = 0, * iGradFiltered = 0;
+	IplImage * iInteg = 0, * iFmap = 0;
+
+	CvPoint * ptCoords = gptPatchCoords;
+
+	CvSize sw_size = cvSize(21, 21);
+	CvSize sw_step = cvSize(16, 16);
+
+	CvSize szSampleSize, szSampleStep;
+	CvSize szGrad, szMap;
+	int nSampleTime = 0;
+
+	float swThreRatio = 0.25;
+	int patchCnt = 0;
+
+	if(NULL == im) {
+#ifdef _DEBUG_CODE_LOCATE_
+		printf("[CodeLocating_process]- Image load failed, im = 0x%x\n", im);
+#endif
+		nRet = -1;
+		goto nExit;
+	}
 
 	if(1 != gnCodeLoc_isInit) {
 		status = CodeLocating_init(im->width, im->height);
 		if(1 != status) {
-			ret_val = -1;
+#ifdef _DEBUG_CODE_LOCATE_
+			printf("[CodeLocating_process]- CodeLocating init failed, status = %d\n", status);
+#endif
+			nRet = -1;
 			goto nExit;
 		}
 	} else if(im->width > gszCodeLoc_initSize.width 
@@ -43,7 +73,10 @@ int CodeLocating_process(IplImage * im, char * imfile_path)
 		CodeLocating_release();
 		status = CodeLocating_init(im->width, im->height);
 		if(1 != status) {
-			ret_val = -1;
+#ifdef _DEBUG_CODE_LOCATE_
+			printf("[CodeLocating_process]- CodeLocating re-init failed, status = %d\n", status);
+#endif
+			nRet = -1;
 			goto nExit;
 		}
 	}
@@ -56,20 +89,20 @@ int CodeLocating_process(IplImage * im, char * imfile_path)
 	cvReleaseImage(&dbgIm);
 #endif _DEBUG_CODE_LOCATE_
 
+	if(RYU_GRADMODE_W3S3 == grad_mode) {
+		nSampleTime = 3;
+		szSampleSize.width = patch_size.width / 3 + (0x1 & patch_size.width % 3);
+		szSampleSize.height = patch_size.height / 3 + (0x1 & patch_size.height % 3);
+		szSampleStep.width = patch_step.width / 3 + (0x1 & patch_step.width % 3);
+		szSampleStep.height = patch_step.height / 3 + (0x1 & patch_step.height % 3);
 
-#ifdef _METHOD_GRADIENT_FEATURE_
-	int i = 0;
-	int gradThre = 10;
-	IplImage * iGrad = 0, * iGradFiltered = 0;
-	IplImage * iInteg = 0, * iFmap = 0;
-
-	CvPoint * ptCoords = gptPatchCoords;
-
-	CvSize sw_size = cvSize(21, 21);
-	CvSize sw_step = cvSize(16, 16);
-
-	float swThreRatio = 0.25;
-	int patchCnt = 0;
+		szGrad = cvSize(im->width / nSampleTime, im->height / nSampleTime);
+		szMap.width = (szGrad.width - szSampleSize.width - 1) / szSampleStep.width + 1;
+		szMap.height = (szGrad.height - szSampleSize.height - 1) / szSampleStep.height + 1;
+	} else {
+		nRet = 0;
+		goto nExit;
+	}
 
 	iGrad = cvCreateImageHeader(cvSize(im->width/3, im->height/3), RYU_DEPTH_8C, 1);
 	iGrad->imageData = giGradient->imageData;
@@ -81,27 +114,22 @@ int CodeLocating_process(IplImage * im, char * imfile_path)
 	iFmap = cvCreateImageHeader(cvSize(im->width/3, im->height/3), RYU_DEPTH_32N, 1);
 	iFmap->imageData = giFeature->imageData;
 
-	ryuTimerStart();
-
 	// 提取梯度
-	GradientFeature_w3s3(im, iGrad, &gradThre, 0.025);
+	ryuGradientFeature_w3s3(im, iGrad, &gradThre, 0.025);
 	// 过滤梯度点
-	GradientFeature_filtering(iGrad, iGradFiltered, gradThre, 1);
+	ryuGradientFeatureFilter(iGrad, iGradFiltered, gradThre, 1);
 	// 构建梯度积分图
-	GetGradientFeatureIntegral(iGradFiltered, gradThre, iInteg);
+	ryuIntegrateGradientFeature(iGradFiltered, gradThre, iInteg);
 	// 获取滑动窗梯度特征
-	FoldGradientFeatureInSlideWindow(iInteg, iFmap, sw_size, sw_step);
+	ryuFoldGradientFeatureInPatch(iInteg, iFmap, sw_size, sw_step);
 	// 特征patch坐标提取
-	patchCnt = FeaturePatchCoords2Arr(iFmap, ptCoords, sw_size, sw_step, swThreRatio);
+	patchCnt = ryuFeaturePatchCoords2Arr(iFmap, ptCoords, sw_size, sw_step, swThreRatio);
 	for(i = 0; i < patchCnt; i++) {
 		ptCoords[i].x *= 3;
 		ptCoords[i].y *= 3;
 	}
 	// 坐标写入文件
-	WritePatchCoords2File(ptCoords, patchCnt, imfile_path);
-
-	ryuTimerStop();
-	ryuTimerPrint();
+	ryuWritePatchCoords2File(ptCoords, patchCnt, imfile_path);
 
 #ifdef _DEBUG_CODE_LOCATE_
 	printf("[CodeLocating_process]- grad_thre = %d\n", gradThre);
@@ -191,11 +219,12 @@ int CodeLocating_process(IplImage * im, char * imfile_path)
 	cvWaitKey();
 	cvReleaseImage(&Grad3C_dbg);
 #endif
-#endif 
 
 nExit:
 
-#ifdef _METHOD_GRADIENT_FEATURE_
+	if(im)
+		cvReleaseImage(&im);
+
 	if(iGrad)
 		cvReleaseImageHeader(&iGrad);
 	if(iGradFiltered)
@@ -204,9 +233,8 @@ nExit:
 		cvReleaseImageHeader(&iInteg);
 	if(iFmap)
 		cvReleaseImageHeader(&iFmap);
-#endif _METHOD_GRADIENT_FEATURE_
 
-	return ret_val;
+	return nRet;
 }
 
 
@@ -216,7 +244,6 @@ int CodeLocating_init(int width, int height)
 
 	gszCodeLoc_initSize = cvSize(width, height);
 
-#ifdef _METHOD_GRADIENT_FEATURE_
 	giGradient = cvCreateImage(cvSize(width/3, height/3), IPL_DEPTH_8U, 1);
 	if(NULL == giGradient) {
 		ret_val = -1;
@@ -246,7 +273,6 @@ int CodeLocating_init(int width, int height)
 		ret_val = -1;
 		goto nExit;
 	}
-#endif _METHOD_GRADIENT_FEATURE_
 
 	ret_val = gnCodeLoc_isInit = 1;
 
@@ -259,7 +285,6 @@ void CodeLocating_release()
 {
 	gnCodeLoc_isInit = 0;
 
-#ifdef _METHOD_GRADIENT_FEATURE_
 	if(giGradient)
 		cvReleaseImage(&giGradient);
 	if(giGradfilter)
@@ -273,7 +298,6 @@ void CodeLocating_release()
 		free(gptPatchCoords);
 		gptPatchCoords = 0;
 	}
-#endif _METHOD_GRADIENT_FEATURE_
 
 	return;
 }
